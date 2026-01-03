@@ -1,6 +1,6 @@
 # Flux
 
-> Deep focus tool for AI-assisted developers
+> Deep focus tool for AI-Augmented developers
 
 ## Description
 
