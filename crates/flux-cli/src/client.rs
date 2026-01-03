@@ -112,3 +112,157 @@ impl Default for DaemonClient {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flux_protocol::Request;
+    use interprocess::local_socket::{GenericFilePath, ListenerOptions};
+    use std::fs;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn test_socket_path() -> PathBuf {
+        let uid = unsafe { libc::getuid() };
+        PathBuf::from(format!("/tmp/flux-test-{}.sock", uid))
+    }
+
+    fn cleanup_socket(path: &PathBuf) {
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn client_creates_with_default_timeout() {
+        let client = DaemonClient::new();
+        assert_eq!(client.timeout, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn client_with_custom_timeout() {
+        let client = DaemonClient::new().with_timeout(Duration::from_secs(10));
+        assert_eq!(client.timeout, Duration::from_secs(10));
+    }
+
+    #[tokio::test]
+    async fn send_returns_error_when_daemon_not_running() {
+        let mut client = DaemonClient::new();
+        client.socket_path = PathBuf::from("/tmp/flux-nonexistent-socket-12345.sock");
+
+        let result = client.send(Request::Ping).await;
+
+        assert!(
+            matches!(result, Err(ClientError::DaemonNotRunning)),
+            "expected DaemonNotRunning, got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn send_ping_receives_pong() {
+        let socket_path = test_socket_path();
+        cleanup_socket(&socket_path);
+
+        let server_path = socket_path.clone();
+        let server_handle = tokio::spawn(async move {
+            let listener = ListenerOptions::new()
+                .name(server_path.as_os_str().to_fs_name::<GenericFilePath>().unwrap())
+                .create_tokio()
+                .unwrap();
+
+            let mut stream = listener.accept().await.unwrap();
+
+            let mut length_buffer = [0u8; 4];
+            stream.read_exact(&mut length_buffer).await.unwrap();
+            let length = u32::from_le_bytes(length_buffer) as usize;
+
+            let mut payload = vec![0u8; length];
+            stream.read_exact(&mut payload).await.unwrap();
+
+            let request: Request = bincode::deserialize(&payload).unwrap();
+            assert!(matches!(request, Request::Ping));
+
+            let response = Response::Pong;
+            let response_bytes = bincode::serialize(&response).unwrap();
+            let response_length = (response_bytes.len() as u32).to_le_bytes();
+
+            stream.write_all(&response_length).await.unwrap();
+            stream.write_all(&response_bytes).await.unwrap();
+            stream.flush().await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut client = DaemonClient::new();
+        client.socket_path = socket_path.clone();
+
+        let result = client.send(Request::Ping).await;
+
+        assert!(matches!(result, Ok(Response::Pong)));
+
+        server_handle.await.unwrap();
+        cleanup_socket(&socket_path);
+    }
+
+    #[tokio::test]
+    async fn send_get_status_receives_session_status() {
+        let socket_path = test_socket_path();
+        let unique_path = PathBuf::from(format!("{}-status", socket_path.display()));
+        cleanup_socket(&unique_path);
+
+        let server_path = unique_path.clone();
+        let server_handle = tokio::spawn(async move {
+            let listener = ListenerOptions::new()
+                .name(server_path.as_os_str().to_fs_name::<GenericFilePath>().unwrap())
+                .create_tokio()
+                .unwrap();
+
+            let mut stream = listener.accept().await.unwrap();
+
+            let mut length_buffer = [0u8; 4];
+            stream.read_exact(&mut length_buffer).await.unwrap();
+            let length = u32::from_le_bytes(length_buffer) as usize;
+
+            let mut payload = vec![0u8; length];
+            stream.read_exact(&mut payload).await.unwrap();
+
+            let request: Request = bincode::deserialize(&payload).unwrap();
+            assert!(matches!(request, Request::GetStatus));
+
+            let response = Response::SessionStatus {
+                active: true,
+                remaining_seconds: 1500,
+                mode: Some(flux_protocol::FocusMode::Prompting),
+                paused: false,
+            };
+            let response_bytes = bincode::serialize(&response).unwrap();
+            let response_length = (response_bytes.len() as u32).to_le_bytes();
+
+            stream.write_all(&response_length).await.unwrap();
+            stream.write_all(&response_bytes).await.unwrap();
+            stream.flush().await.unwrap();
+        });
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut client = DaemonClient::new();
+        client.socket_path = unique_path.clone();
+
+        let result = client.send(Request::GetStatus).await;
+
+        match result {
+            Ok(Response::SessionStatus {
+                active,
+                remaining_seconds,
+                paused,
+                ..
+            }) => {
+                assert!(active);
+                assert_eq!(remaining_seconds, 1500);
+                assert!(!paused);
+            }
+            _ => panic!("expected SessionStatus response"),
+        }
+
+        server_handle.await.unwrap();
+        cleanup_socket(&unique_path);
+    }
+}
