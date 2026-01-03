@@ -150,6 +150,9 @@ mod tests {
         assert_eq!(format_mode(FocusMode::Prompting), "prompting");
         assert_eq!(format_mode(FocusMode::Review), "review");
         assert_eq!(format_mode(FocusMode::Architecture), "architecture");
-        assert_eq!(format_mode(FocusMode::Custom("deep-work".to_string())), "deep-work");
+        assert_eq!(
+            format_mode(FocusMode::Custom("deep-work".to_string())),
+            "deep-work"
+        );
     }
 }

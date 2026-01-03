@@ -164,7 +164,12 @@ mod tests {
         let server_path = socket_path.clone();
         let server_handle = tokio::spawn(async move {
             let listener = ListenerOptions::new()
-                .name(server_path.as_os_str().to_fs_name::<GenericFilePath>().unwrap())
+                .name(
+                    server_path
+                        .as_os_str()
+                        .to_fs_name::<GenericFilePath>()
+                        .unwrap(),
+                )
                 .create_tokio()
                 .unwrap();
 
@@ -211,7 +216,12 @@ mod tests {
         let server_path = unique_path.clone();
         let server_handle = tokio::spawn(async move {
             let listener = ListenerOptions::new()
-                .name(server_path.as_os_str().to_fs_name::<GenericFilePath>().unwrap())
+                .name(
+                    server_path
+                        .as_os_str()
+                        .to_fs_name::<GenericFilePath>()
+                        .unwrap(),
+                )
                 .create_tokio()
                 .unwrap();
 

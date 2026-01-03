@@ -42,7 +42,11 @@ impl Server {
         self.cleanup_stale_socket()?;
 
         let listener = ListenerOptions::new()
-            .name(self.socket_path.as_os_str().to_fs_name::<GenericFilePath>()?)
+            .name(
+                self.socket_path
+                    .as_os_str()
+                    .to_fs_name::<GenericFilePath>()?,
+            )
             .create_tokio()?;
 
         info!(path = %self.socket_path.display(), "server listening");
