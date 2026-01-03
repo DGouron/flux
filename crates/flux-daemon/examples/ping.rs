@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use flux_protocol::{Request, Response};
 use interprocess::local_socket::{tokio::prelude::*, GenericFilePath};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

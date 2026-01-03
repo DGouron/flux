@@ -20,12 +20,23 @@ pub struct Server {
 
 impl Server {
     pub fn new(timer_handle: TimerHandle) -> Result<Self> {
-        let uid = unsafe { libc::getuid() };
-        let socket_path = PathBuf::from(format!("/run/user/{}/flux.sock", uid));
+        let socket_path = Self::default_socket_path();
         Ok(Self {
             socket_path,
             timer_handle,
         })
+    }
+
+    #[cfg(unix)]
+    fn default_socket_path() -> PathBuf {
+        let uid = unsafe { libc::getuid() };
+        PathBuf::from(format!("/run/user/{}/flux.sock", uid))
+    }
+
+    #[cfg(windows)]
+    fn default_socket_path() -> PathBuf {
+        let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(format!(r"{}\flux\flux.sock", local_app_data))
     }
 
     fn cleanup_stale_socket(&self) -> Result<()> {

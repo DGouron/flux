@@ -14,4 +14,6 @@ interprocess.workspace = true
 bincode.workspace = true
 serde.workspace = true
 flux-protocol = { path = "../flux-protocol" }
+
+[target.'cfg(unix)'.dependencies]
 libc.workspace = true
