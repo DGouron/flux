@@ -38,10 +38,7 @@ async fn main() {
 
     let result = match cli.command {
         Commands::Start { duration, mode } => commands::start(duration, mode).await,
-        Commands::Stop => {
-            println!("Not implemented");
-            Ok(())
-        }
+        Commands::Stop => commands::stop().await,
         Commands::Status { json } => commands::status(json).await,
     };
 
