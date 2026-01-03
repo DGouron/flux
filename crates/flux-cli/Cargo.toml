@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[[bin]]
+name = "flux"
+path = "src/main.rs"
+
 [dependencies]
 clap.workspace = true
 anyhow.workspace = true

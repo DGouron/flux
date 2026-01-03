@@ -13,23 +13,24 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            archive: tar.gz
+            cross: false
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            archive: tar.gz
+            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
-            archive: tar.gz
+            cross: false
           - target: aarch64-apple-darwin
             os: macos-latest
-            archive: tar.gz
+            cross: false
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            archive: zip
+            cross: false
 
     steps:
       - uses: actions/checkout@v4
@@ -39,20 +40,23 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build
+      - name: Build with cross
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} -p flux-cli -p flux-daemon
+
+      - name: Build with cargo
+        if: "!matrix.cross"
         run: cargo build --release --target ${{ matrix.target }} -p flux-cli -p flux-daemon
 
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/flux-cli dist/
+          cp target/${{ matrix.target }}/release/flux dist/
           cp target/${{ matrix.target }}/release/flux-daemon dist/
           cd dist
           tar -czvf ../flux-${{ github.ref_name }}-${{ matrix.target }}.tar.gz *
@@ -61,7 +65,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/flux-cli.exe dist/
+          cp target/${{ matrix.target }}/release/flux.exe dist/
           cp target/${{ matrix.target }}/release/flux-daemon.exe dist/
           Compress-Archive -Path dist/* -DestinationPath flux-${{ github.ref_name }}-${{ matrix.target }}.zip
 

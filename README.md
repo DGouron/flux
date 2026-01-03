@@ -34,7 +34,7 @@ tar -xzf flux-v*.tar.gz
 ```
 3. Déplace les binaires dans ton PATH :
 ```bash
-mv flux-cli flux-daemon ~/.local/bin/
+mv flux flux-daemon ~/.local/bin/
 ```
 
 ### Depuis les sources
@@ -55,23 +55,23 @@ flux-daemon
 ### Démarrer une session focus
 
 ```bash
-flux-cli start                    # Défaut: 25 min, mode prompting
-flux-cli start -d 45              # 45 minutes
-flux-cli start -m review          # Mode review
-flux-cli start -d 30 -m prompting # Combiné
+flux start                    # Défaut: 25 min, mode prompting
+flux start -d 45              # 45 minutes
+flux start -m review          # Mode review
+flux start -d 30 -m prompting # Combiné
 ```
 
 ### Vérifier le statut
 
 ```bash
-flux-cli status          # Affichage formaté
-flux-cli status --json   # Format JSON
+flux status          # Affichage formaté
+flux status --json   # Format JSON
 ```
 
 ### Arrêter la session
 
 ```bash
-flux-cli stop
+flux stop
 ```
 
 ## Modes de focus

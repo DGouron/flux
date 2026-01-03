@@ -65,9 +65,9 @@ main() {
     tar -xzf "$tmpdir/$filename" -C "$tmpdir"
 
     mkdir -p "$INSTALL_DIR"
-    mv "$tmpdir/flux-cli" "$INSTALL_DIR/"
+    mv "$tmpdir/flux" "$INSTALL_DIR/"
     mv "$tmpdir/flux-daemon" "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/flux-cli" "$INSTALL_DIR/flux-daemon"
+    chmod +x "$INSTALL_DIR/flux" "$INSTALL_DIR/flux-daemon"
 
     echo ""
     echo "✅ Flux installé dans $INSTALL_DIR"
@@ -82,9 +82,9 @@ main() {
     fi
 
     echo "📖 Usage:"
-    echo "   flux-cli status"
-    echo "   flux-cli start -d 25"
-    echo "   flux-cli stop"
+    echo "   flux status"
+    echo "   flux start -d 25"
+    echo "   flux stop"
 }
 
 main
