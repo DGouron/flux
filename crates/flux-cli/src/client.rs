@@ -32,12 +32,23 @@ pub struct DaemonClient {
 
 impl DaemonClient {
     pub fn new() -> Self {
-        let uid = unsafe { libc::getuid() };
-        let socket_path = PathBuf::from(format!("/run/user/{}/flux.sock", uid));
+        let socket_path = Self::default_socket_path();
         Self {
             socket_path,
             timeout: DEFAULT_TIMEOUT,
         }
+    }
+
+    #[cfg(unix)]
+    fn default_socket_path() -> PathBuf {
+        let uid = unsafe { libc::getuid() };
+        PathBuf::from(format!("/run/user/{}/flux.sock", uid))
+    }
+
+    #[cfg(windows)]
+    fn default_socket_path() -> PathBuf {
+        let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(format!(r"{}\flux\flux.sock", local_app_data))
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -116,6 +127,23 @@ impl Default for DaemonClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_creates_with_default_timeout() {
+        let client = DaemonClient::new();
+        assert_eq!(client.timeout, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn client_with_custom_timeout() {
+        let client = DaemonClient::new().with_timeout(Duration::from_secs(10));
+        assert_eq!(client.timeout, Duration::from_secs(10));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unix_tests {
+    use super::*;
     use flux_protocol::Request;
     use interprocess::local_socket::{GenericFilePath, ListenerOptions};
     use std::fs;
@@ -128,18 +156,6 @@ mod tests {
 
     fn cleanup_socket(path: &PathBuf) {
         let _ = fs::remove_file(path);
-    }
-
-    #[test]
-    fn client_creates_with_default_timeout() {
-        let client = DaemonClient::new();
-        assert_eq!(client.timeout, Duration::from_secs(5));
-    }
-
-    #[test]
-    fn client_with_custom_timeout() {
-        let client = DaemonClient::new().with_timeout(Duration::from_secs(10));
-        assert_eq!(client.timeout, Duration::from_secs(10));
     }
 
     #[tokio::test]
