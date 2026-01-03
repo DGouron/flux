@@ -9,3 +9,9 @@ authors.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
+interprocess.workspace = true
+bincode.workspace = true
+serde.workspace = true
+flux-protocol = { path = "../flux-protocol" }
+libc.workspace = true
