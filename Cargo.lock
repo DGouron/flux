@@ -161,7 +161,13 @@ name = "flux-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "clap",
+ "flux-protocol",
+ "interprocess",
+ "libc",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

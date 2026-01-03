@@ -8,3 +8,9 @@ authors.workspace = true
 [dependencies]
 clap.workspace = true
 anyhow.workspace = true
+tokio.workspace = true
+bincode.workspace = true
+thiserror.workspace = true
+interprocess.workspace = true
+libc.workspace = true
+flux-protocol = { path = "../flux-protocol" }
