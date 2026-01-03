@@ -1,4 +1,4 @@
-mod client;
+pub mod client;
 
 use clap::{Parser, Subcommand};
 
