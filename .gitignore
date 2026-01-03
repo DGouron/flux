@@ -1,0 +1,33 @@
+# Rust build artifacts
+/target/
+debug/
+release/
+
+# Cargo.lock for library crates (keep for binaries)
+# Uncomment if this is a library:
+# Cargo.lock
+
+# Generated files
+*.rs.bk
+*.pdb
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude-specific files
+.claude/
+CLAUDE.md
+PLAN.md
