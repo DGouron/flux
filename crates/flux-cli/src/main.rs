@@ -1,10 +1,11 @@
 pub mod client;
+mod commands;
 
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "flux")]
-#[command(about = "Flux CLI - Control the Flux daemon", long_about = None)]
+#[command(about = "Flux CLI - Gestionnaire de sessions focus", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -12,26 +13,36 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start the Flux daemon
+    /// Démarrer une session focus
     Start,
-    /// Stop the Flux daemon
+    /// Arrêter la session en cours
     Stop,
-    /// Show the daemon status
-    Status,
+    /// Afficher le statut de la session
+    Status {
+        /// Afficher en format JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Start => {
             println!("Not implemented");
+            Ok(())
         }
         Commands::Stop => {
             println!("Not implemented");
+            Ok(())
         }
-        Commands::Status => {
-            println!("Not implemented");
-        }
+        Commands::Status { json } => commands::status(json).await,
+    };
+
+    if let Err(error) = result {
+        eprintln!("Erreur: {}", error);
+        std::process::exit(1);
     }
 }

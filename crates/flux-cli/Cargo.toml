@@ -13,4 +13,6 @@ bincode.workspace = true
 thiserror.workspace = true
 interprocess.workspace = true
 libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 flux-protocol = { path = "../flux-protocol" }
