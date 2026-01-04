@@ -5,18 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Focus modes for different types of work sessions
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FocusMode {
-    /// Deep work on prompting and guiding AI agents
-    Prompting,
-    /// Code review and validation
-    Review,
-    /// System design and architecture work
-    Architecture,
-    /// Custom mode with user-defined name
-    Custom(String),
-}
+pub use flux_core::FocusMode;
 
 /// Requests sent from CLI to daemon
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

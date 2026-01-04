@@ -1,0 +1,22 @@
+use thiserror::Error;
+
+use crate::domain::{Session, SessionId};
+
+#[derive(Error, Debug)]
+pub enum SessionRepositoryError {
+    #[error("session introuvable: {id}")]
+    NotFound { id: SessionId },
+
+    #[error("erreur de persistence: {message}")]
+    Storage { message: String },
+}
+
+pub trait SessionRepository: Send + Sync {
+    fn save(&self, session: &mut Session) -> Result<SessionId, SessionRepositoryError>;
+
+    fn update(&self, session: &Session) -> Result<(), SessionRepositoryError>;
+
+    fn find_by_id(&self, id: SessionId) -> Result<Session, SessionRepositoryError>;
+
+    fn find_active(&self) -> Result<Option<Session>, SessionRepositoryError>;
+}

@@ -8,3 +8,4 @@ authors.workspace = true
 [dependencies]
 serde.workspace = true
 bincode.workspace = true
+flux-core.workspace = true

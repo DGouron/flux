@@ -1,8 +1,12 @@
-use super::NotifierHandle;
-use flux_protocol::FocusMode;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
 use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
+
+use flux_core::{FocusMode, Session, SessionRepository};
+
+use super::NotifierHandle;
 
 pub enum TimerMessage {
     Start {
@@ -39,6 +43,8 @@ pub struct TimerActor {
     receiver: mpsc::Receiver<TimerMessage>,
     state: Option<TimerState>,
     notifier: Option<NotifierHandle>,
+    session_repository: Option<Arc<dyn SessionRepository>>,
+    current_session: Option<Session>,
 }
 
 #[derive(Clone)]
@@ -87,13 +93,18 @@ impl TimerHandle {
 }
 
 impl TimerActor {
-    pub fn new(notifier: Option<NotifierHandle>) -> (Self, TimerHandle) {
+    pub fn new(
+        notifier: Option<NotifierHandle>,
+        session_repository: Option<Arc<dyn SessionRepository>>,
+    ) -> (Self, TimerHandle) {
         let (sender, receiver) = mpsc::channel(32);
 
         let actor = Self {
             receiver,
             state: None,
             notifier,
+            session_repository,
+            current_session: None,
         };
 
         let handle = TimerHandle { sender };
@@ -118,6 +129,57 @@ impl TimerActor {
             .unwrap_or(0)
     }
 
+    fn persist_new_session(&mut self, mode: FocusMode) {
+        if let Some(ref repository) = self.session_repository {
+            let mut session = Session::start(mode);
+            match repository.save(&mut session) {
+                Ok(_) => {
+                    debug!("session persisted");
+                    self.current_session = Some(session);
+                }
+                Err(err) => {
+                    error!(%err, "failed to persist session");
+                    self.notify_persistence_error();
+                }
+            }
+        }
+    }
+
+    fn persist_session_end(&mut self) {
+        if let (Some(ref repository), Some(ref mut session)) =
+            (&self.session_repository, &mut self.current_session)
+        {
+            session.end();
+            if let Err(err) = repository.update(session) {
+                error!(%err, "failed to update session on end");
+                self.notify_persistence_error();
+            }
+        }
+        self.current_session = None;
+    }
+
+    fn persist_check_in(&mut self) {
+        if let (Some(ref repository), Some(ref mut session)) =
+            (&self.session_repository, &mut self.current_session)
+        {
+            session.increment_check_in();
+            if let Err(err) = repository.update(session) {
+                error!(%err, "failed to update session check-in count");
+                self.notify_persistence_error();
+            }
+        }
+    }
+
+    fn notify_persistence_error(&self) {
+        if let Some(ref notifier) = self.notifier {
+            notifier.send_alert(
+                "Flux - Erreur".to_string(),
+                "Impossible de sauvegarder la session. Les données pourraient être perdues."
+                    .to_string(),
+            );
+        }
+    }
+
     pub async fn run(mut self) {
         let mut tick_interval = tokio::time::interval(Duration::from_secs(1));
         let mut time_since_check_in = Duration::ZERO;
@@ -130,7 +192,7 @@ impl TimerActor {
                             info!(?mode, ?duration, "session started");
                             let duration_minutes = duration.as_secs() / 60;
                             self.state = Some(TimerState {
-                                mode,
+                                mode: mode.clone(),
                                 total_duration: duration,
                                 remaining: duration,
                                 check_in_interval,
@@ -138,6 +200,8 @@ impl TimerActor {
                                 paused: false,
                             });
                             time_since_check_in = Duration::ZERO;
+
+                            self.persist_new_session(mode);
 
                             if let Some(ref notifier) = self.notifier {
                                 notifier.send_session_start(duration_minutes);
@@ -147,6 +211,8 @@ impl TimerActor {
                             if self.state.is_some() {
                                 let total = self.total_minutes();
                                 info!("session stopped");
+
+                                self.persist_session_end();
 
                                 if let Some(ref notifier) = self.notifier {
                                     notifier.send_session_end(total);
@@ -193,6 +259,7 @@ impl TimerActor {
 
                             if time_since_check_in >= state.check_in_interval {
                                 debug!("check-in triggered");
+                                self.persist_check_in();
                                 if let Some(ref notifier) = self.notifier {
                                     notifier.send_check_in(self.elapsed_minutes());
                                 }
@@ -201,6 +268,8 @@ impl TimerActor {
                         } else {
                             let total = self.total_minutes();
                             info!("session completed");
+
+                            self.persist_session_end();
 
                             if let Some(ref notifier) = self.notifier {
                                 notifier.send_session_end(total);
@@ -242,7 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn start_and_get_status() {
-        let (actor, handle) = TimerActor::new(None);
+        let (actor, handle) = TimerActor::new(None, None);
         tokio::spawn(actor.run());
 
         handle
@@ -265,7 +334,7 @@ mod tests {
 
     #[tokio::test]
     async fn pause_and_resume() {
-        let (actor, handle) = TimerActor::new(None);
+        let (actor, handle) = TimerActor::new(None, None);
         tokio::spawn(actor.run());
 
         handle
@@ -294,7 +363,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_clears_session() {
-        let (actor, handle) = TimerActor::new(None);
+        let (actor, handle) = TimerActor::new(None, None);
         tokio::spawn(actor.run());
 
         handle
@@ -316,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn check_in_triggers_at_interval() {
-        let (actor, handle) = TimerActor::new(None);
+        let (actor, handle) = TimerActor::new(None, None);
         tokio::spawn(actor.run());
 
         handle

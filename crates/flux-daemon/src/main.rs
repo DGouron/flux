@@ -1,9 +1,12 @@
 mod actors;
 mod server;
 
+use std::sync::Arc;
+
 use actors::{NotifierActor, TimerActor};
 use anyhow::Result;
-use flux_core::Config;
+use flux_adapters::SqliteSessionRepository;
+use flux_core::{Config, SessionRepository};
 use server::Server;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
@@ -36,7 +39,9 @@ async fn main() -> Result<()> {
     );
     tokio::spawn(notifier_actor.run());
 
-    let (timer_actor, timer_handle) = TimerActor::new(Some(notifier_handle));
+    let session_repository = create_session_repository();
+
+    let (timer_actor, timer_handle) = TimerActor::new(Some(notifier_handle), session_repository);
     tokio::spawn(timer_actor.run());
 
     let server = Server::new(timer_handle)?;
@@ -44,4 +49,26 @@ async fn main() -> Result<()> {
 
     info!("flux daemon stopped");
     Ok(())
+}
+
+fn create_session_repository() -> Option<Arc<dyn SessionRepository>> {
+    let data_dir = dirs::data_dir()?.join("flux");
+
+    if let Err(error) = std::fs::create_dir_all(&data_dir) {
+        warn!(%error, "failed to create data directory, sessions will not be persisted");
+        return None;
+    }
+
+    let database_path = data_dir.join("sessions.db");
+
+    match SqliteSessionRepository::new(&database_path) {
+        Ok(repository) => {
+            info!(?database_path, "session persistence enabled");
+            Some(Arc::new(repository))
+        }
+        Err(error) => {
+            warn!(%error, "failed to initialize session repository, sessions will not be persisted");
+            None
+        }
+    }
 }
