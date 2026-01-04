@@ -3,6 +3,8 @@ mod server;
 
 use std::sync::Arc;
 
+#[cfg(target_os = "linux")]
+use actors::spawn_tray;
 use actors::{NotifierActor, TimerActor};
 use anyhow::Result;
 use flux_adapters::SqliteSessionRepository;
@@ -39,6 +41,19 @@ async fn main() -> Result<()> {
         config.notifications.sound_enabled,
     );
     tokio::spawn(notifier_actor.run());
+
+    #[cfg(target_os = "linux")]
+    let _tray_handle = if config.tray.enabled {
+        match spawn_tray() {
+            Ok(handle) => Some(handle),
+            Err(error) => {
+                warn!(%error, "tray initialization failed, continuing without tray");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let session_repository = create_session_repository();
 

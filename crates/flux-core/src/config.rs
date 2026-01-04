@@ -25,6 +25,7 @@ pub enum ConfigError {
 pub struct Config {
     pub focus: FocusConfig,
     pub notifications: NotificationConfig,
+    pub tray: TrayConfig,
     pub gitlab: Option<ProviderConfig>,
     pub github: Option<ProviderConfig>,
 }
@@ -77,6 +78,12 @@ impl Default for NotificationConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct TrayConfig {
+    pub enabled: bool,
+}
+
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         let path = Self::config_path();
@@ -110,6 +117,7 @@ mod tests {
         assert_eq!(config.focus.check_in_interval_minutes, 25);
         assert_eq!(config.focus.check_in_timeout_seconds, 120);
         assert!(config.notifications.sound_enabled);
+        assert!(!config.tray.enabled);
         assert!(config.gitlab.is_none());
         assert!(config.github.is_none());
     }
@@ -163,5 +171,17 @@ mod tests {
             config.github.as_ref().unwrap().base_url,
             "https://github.com"
         );
+    }
+
+    #[test]
+    fn parse_tray_config() {
+        let toml = r#"
+            [tray]
+            enabled = true
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert!(config.tray.enabled);
     }
 }

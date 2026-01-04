@@ -8,7 +8,9 @@ pub mod domain;
 pub mod ports;
 pub mod secrets;
 
-pub use config::{Config, ConfigError, FocusConfig, NotificationConfig, NotificationUrgency};
+pub use config::{
+    Config, ConfigError, FocusConfig, NotificationConfig, NotificationUrgency, TrayConfig,
+};
 pub use domain::{FocusMode, Provider, ReviewAction, ReviewEvent, Session, SessionId};
 pub use ports::{
     ReviewActivityGateway, ReviewGatewayError, SessionRepository, SessionRepositoryError,
