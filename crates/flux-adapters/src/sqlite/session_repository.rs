@@ -150,6 +150,36 @@ impl SessionRepository for SqliteSessionRepository {
             }),
         }
     }
+
+    fn find_completed_since(
+        &self,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<Session>, SessionRepositoryError> {
+        let connection = self.connection.lock().unwrap();
+
+        let mut statement = connection
+            .prepare(
+                "SELECT id, mode, started_at, ended_at, duration_seconds, check_in_count
+                 FROM sessions
+                 WHERE ended_at IS NOT NULL AND started_at >= ?1
+                 ORDER BY started_at DESC",
+            )
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
+
+        let sessions = statement
+            .query_map(params![since.to_rfc3339()], |row| Ok(row_to_session(row)))
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
+
+        Ok(sessions)
+    }
 }
 
 fn row_to_session(row: &rusqlite::Row) -> Session {
@@ -258,5 +288,45 @@ mod tests {
 
         let retrieved = repository.find_by_id(session.id.unwrap()).unwrap();
         assert_eq!(retrieved.mode, FocusMode::Custom("deep-work".to_string()));
+    }
+
+    #[test]
+    fn find_completed_since_filters_by_date() {
+        use chrono::Duration;
+
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session1 = Session::start(FocusMode::Prompting);
+        session1.end();
+        repository.save(&mut session1).unwrap();
+
+        let mut session2 = Session::start(FocusMode::Review);
+        session2.end();
+        repository.save(&mut session2).unwrap();
+
+        let since = Utc::now() - Duration::hours(1);
+        let sessions = repository.find_completed_since(since).unwrap();
+
+        assert_eq!(sessions.len(), 2);
+    }
+
+    #[test]
+    fn find_completed_since_excludes_active_sessions() {
+        use chrono::Duration;
+
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut completed = Session::start(FocusMode::Prompting);
+        completed.end();
+        repository.save(&mut completed).unwrap();
+
+        let mut active = Session::start(FocusMode::Review);
+        repository.save(&mut active).unwrap();
+
+        let since = Utc::now() - Duration::hours(1);
+        let sessions = repository.find_completed_since(since).unwrap();
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].mode, FocusMode::Prompting);
     }
 }

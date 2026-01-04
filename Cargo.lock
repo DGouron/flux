@@ -690,7 +690,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "chrono",
  "clap",
+ "dirs",
+ "flux-adapters",
+ "flux-core",
  "flux-protocol",
  "interprocess",
  "libc",

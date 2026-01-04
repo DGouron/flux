@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 use crate::domain::{Session, SessionId};
@@ -19,4 +20,9 @@ pub trait SessionRepository: Send + Sync {
     fn find_by_id(&self, id: SessionId) -> Result<Session, SessionRepositoryError>;
 
     fn find_active(&self) -> Result<Option<Session>, SessionRepositoryError>;
+
+    fn find_completed_since(
+        &self,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<Session>, SessionRepositoryError>;
 }

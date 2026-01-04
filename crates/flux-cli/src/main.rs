@@ -30,6 +30,12 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Afficher les statistiques d'utilisation
+    Stats {
+        /// Période: today, week, month, all (défaut: week)
+        #[arg(short, long, default_value = "week")]
+        period: String,
+    },
 }
 
 #[tokio::main]
@@ -40,6 +46,10 @@ async fn main() {
         Commands::Start { duration, mode } => commands::start(duration, mode).await,
         Commands::Stop => commands::stop().await,
         Commands::Status { json } => commands::status(json).await,
+        Commands::Stats { period } => {
+            let period = commands::Period::from_str(&period).unwrap_or(commands::Period::Week);
+            commands::stats(period).await
+        }
     };
 
     if let Err(error) = result {
