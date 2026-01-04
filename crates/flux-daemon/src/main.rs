@@ -4,7 +4,7 @@ mod server;
 use std::sync::Arc;
 
 #[cfg(target_os = "linux")]
-use actors::{open_configuration, spawn_tray, TrayAction};
+use actors::{check_for_updates, open_configuration, spawn_tray, TrayAction};
 use actors::{NotifierActor, TimerActor};
 use anyhow::Result;
 use flux_adapters::SqliteSessionRepository;
@@ -75,26 +75,30 @@ async fn main() -> Result<()> {
     if let Some(action_receiver) = tray_action_receiver {
         let tray_timer_handle = timer_handle.clone();
         let tray_shutdown_sender = shutdown_sender.clone();
+        let runtime_handle = tokio::runtime::Handle::current();
         std::thread::spawn(move || {
             while let Ok(action) = action_receiver.recv() {
                 match action {
                     TrayAction::Pause => {
                         let handle = tray_timer_handle.clone();
-                        tokio::runtime::Handle::current().spawn(async move {
+                        runtime_handle.spawn(async move {
                             let _ = handle.pause().await;
                         });
                     }
                     TrayAction::Resume => {
                         let handle = tray_timer_handle.clone();
-                        tokio::runtime::Handle::current().spawn(async move {
+                        runtime_handle.spawn(async move {
                             let _ = handle.resume().await;
                         });
                     }
                     TrayAction::Stop => {
                         let handle = tray_timer_handle.clone();
-                        tokio::runtime::Handle::current().spawn(async move {
+                        runtime_handle.spawn(async move {
                             let _ = handle.stop().await;
                         });
+                    }
+                    TrayAction::CheckForUpdates => {
+                        check_for_updates();
                     }
                     TrayAction::OpenConfiguration => {
                         open_configuration();

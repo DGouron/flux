@@ -10,6 +10,7 @@ pub enum TrayAction {
     Pause,
     Resume,
     Stop,
+    CheckForUpdates,
     OpenConfiguration,
     Quit,
 }
@@ -144,6 +145,14 @@ impl ksni::Tray for FluxTray {
         }
 
         items.push(MenuItem::Standard(StandardItem {
+            label: "Check for updates".to_string(),
+            activate: Box::new(|tray: &mut Self| {
+                let _ = tray.action_sender.send(TrayAction::CheckForUpdates);
+            }),
+            ..Default::default()
+        }));
+
+        items.push(MenuItem::Standard(StandardItem {
             label: "Open configuration".to_string(),
             activate: Box::new(|tray: &mut Self| {
                 let _ = tray.action_sender.send(TrayAction::OpenConfiguration);
@@ -264,6 +273,32 @@ pub fn open_configuration() {
             warn!(%error, "failed to open configuration file");
         }
     }
+}
+
+pub fn check_for_updates() {
+    let terminals = ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"];
+
+    for terminal in terminals {
+        let result = match terminal {
+            "gnome-terminal" => Command::new(terminal)
+                .args(["--", "flux", "update"])
+                .spawn(),
+            "konsole" => Command::new(terminal)
+                .args(["-e", "flux", "update"])
+                .spawn(),
+            "xfce4-terminal" => Command::new(terminal).args(["-e", "flux update"]).spawn(),
+            "xterm" => Command::new(terminal)
+                .args(["-e", "flux", "update"])
+                .spawn(),
+            _ => continue,
+        };
+
+        if result.is_ok() {
+            return;
+        }
+    }
+
+    warn!("no suitable terminal emulator found for update");
 }
 
 #[cfg(test)]
