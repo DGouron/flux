@@ -13,7 +13,9 @@ tracing-subscriber.workspace = true
 interprocess.workspace = true
 bincode.workspace = true
 serde.workspace = true
+notify-rust.workspace = true
 flux-protocol = { path = "../flux-protocol" }
+flux-core = { path = "../flux-core" }
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

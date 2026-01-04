@@ -26,4 +26,5 @@ ureq = { version = "2.9.1", features = ["json"] }
 futures = "0.3"
 dirs = "5.0"
 toml = "0.8"
+notify-rust = "=4.8.0"
 flux-core = { path = "crates/flux-core" }

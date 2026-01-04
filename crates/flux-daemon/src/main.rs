@@ -1,11 +1,12 @@
 mod actors;
 mod server;
 
-use actors::TimerActor;
+use actors::{NotifierActor, TimerActor};
 use anyhow::Result;
+use flux_core::Config;
 use server::Server;
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -16,6 +17,11 @@ async fn main() -> Result<()> {
 
     info!("flux daemon starting");
 
+    let config = Config::load().unwrap_or_else(|error| {
+        warn!(%error, "failed to load config, using defaults");
+        Config::default()
+    });
+
     let (shutdown_sender, shutdown_receiver) = broadcast::channel::<()>(1);
 
     tokio::spawn(async move {
@@ -24,8 +30,15 @@ async fn main() -> Result<()> {
         shutdown_sender.send(()).ok();
     });
 
-    let (timer_actor, timer_handle) = TimerActor::new(|| {
-        info!("check-in triggered - notification will go here");
+    let (notifier_actor, notifier_handle) = NotifierActor::new(
+        config.notifications.urgency.clone(),
+        config.notifications.sound_enabled,
+    );
+    tokio::spawn(notifier_actor.run());
+
+    let notifier_for_timer = notifier_handle.clone();
+    let (timer_actor, timer_handle) = TimerActor::new(move || {
+        notifier_for_timer.send_check_in(25);
     });
     tokio::spawn(timer_actor.run());
 
