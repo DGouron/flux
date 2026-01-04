@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "flux")]
+#[command(version)]
 #[command(about = "Flux CLI - Gestionnaire de sessions focus", long_about = None)]
 struct Cli {
     #[command(subcommand)]

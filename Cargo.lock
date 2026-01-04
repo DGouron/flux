@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "flux-adapters"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "async-trait",
  "chrono",
@@ -796,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "flux-cli"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "bincode",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "flux-core"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -833,7 +833,7 @@ dependencies = [
 
 [[package]]
 name = "flux-daemon"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "bincode",
@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "flux-protocol"
-version = "0.1.0"
+version = "0.1.13"
 dependencies = [
  "bincode",
  "flux-core",
