@@ -1,31 +1,31 @@
-# ADR-XXX : Titre de la décision
+# ADR-XXX: Decision Title
 
-**Date** : YYYY-MM-DD
-**Statut** : Proposé | Accepté | Déprécié | Remplacé par [ADR-XXX]
+**Date**: YYYY-MM-DD
+**Status**: Proposed | Accepted | Deprecated | Superseded by [ADR-XXX]
 
-## Contexte
+## Context
 
-Quel est le problème ou la situation qui nécessite une décision ?
+What is the problem or situation that requires a decision?
 
-## Décision
+## Decision
 
-Quelle est la décision prise ?
+What is the decision taken?
 
-## Alternatives considérées
+## Alternatives Considered
 
-| Alternative | Avantages | Inconvénients |
-|-------------|-----------|---------------|
+| Alternative | Pros | Cons |
+|-------------|------|------|
 | Option A | ... | ... |
 | Option B | ... | ... |
 
-## Conséquences
+## Consequences
 
-### Positives
+### Positive
 - ...
 
-### Négatives
+### Negative
 - ...
 
 ## Notes
 
-Références, liens, discussions pertinentes.
+References, links, relevant discussions.
