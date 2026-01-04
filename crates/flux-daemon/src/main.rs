@@ -43,20 +43,31 @@ async fn main() -> Result<()> {
     tokio::spawn(notifier_actor.run());
 
     #[cfg(target_os = "linux")]
-    let _tray_handle = if config.tray.enabled {
+    let (tray_handle, tray_state) = if config.tray.enabled {
         match spawn_tray() {
-            Ok(handle) => Some(handle),
+            Ok(handle) => {
+                let state = handle.state_handle.clone();
+                (Some(handle), Some(state))
+            }
             Err(error) => {
                 warn!(%error, "tray initialization failed, continuing without tray");
-                None
+                (None, None)
             }
         }
     } else {
-        None
+        (None, None)
     };
+
+    #[cfg(target_os = "linux")]
+    let _tray_handle = tray_handle;
 
     let session_repository = create_session_repository();
 
+    #[cfg(target_os = "linux")]
+    let (timer_actor, timer_handle) =
+        TimerActor::new(Some(notifier_handle), tray_state, session_repository);
+
+    #[cfg(not(target_os = "linux"))]
     let (timer_actor, timer_handle) = TimerActor::new(Some(notifier_handle), session_repository);
     tokio::spawn(timer_actor.run());
 

@@ -7,6 +7,8 @@ use tracing::{debug, error, info};
 use flux_core::{FocusMode, Session, SessionRepository};
 
 use super::NotifierHandle;
+#[cfg(target_os = "linux")]
+use super::TrayStateHandle;
 
 pub enum TimerMessage {
     Start {
@@ -43,6 +45,8 @@ pub struct TimerActor {
     receiver: mpsc::Receiver<TimerMessage>,
     state: Option<TimerState>,
     notifier: Option<NotifierHandle>,
+    #[cfg(target_os = "linux")]
+    tray_state: Option<TrayStateHandle>,
     session_repository: Option<Arc<dyn SessionRepository>>,
     current_session: Option<Session>,
 }
@@ -93,6 +97,29 @@ impl TimerHandle {
 }
 
 impl TimerActor {
+    #[cfg(target_os = "linux")]
+    pub fn new(
+        notifier: Option<NotifierHandle>,
+        tray_state: Option<TrayStateHandle>,
+        session_repository: Option<Arc<dyn SessionRepository>>,
+    ) -> (Self, TimerHandle) {
+        let (sender, receiver) = mpsc::channel(32);
+
+        let actor = Self {
+            receiver,
+            state: None,
+            notifier,
+            tray_state,
+            session_repository,
+            current_session: None,
+        };
+
+        let handle = TimerHandle { sender };
+
+        (actor, handle)
+    }
+
+    #[cfg(not(target_os = "linux"))]
     pub fn new(
         notifier: Option<NotifierHandle>,
         session_repository: Option<Arc<dyn SessionRepository>>,
@@ -180,6 +207,46 @@ impl TimerActor {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    fn update_tray_active(&self) {
+        if let Some(ref tray) = self.tray_state {
+            tray.set_active();
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn update_tray_active(&self) {}
+
+    #[cfg(target_os = "linux")]
+    fn update_tray_paused(&self) {
+        if let Some(ref tray) = self.tray_state {
+            tray.set_paused();
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn update_tray_paused(&self) {}
+
+    #[cfg(target_os = "linux")]
+    fn update_tray_inactive(&self) {
+        if let Some(ref tray) = self.tray_state {
+            tray.set_inactive();
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn update_tray_inactive(&self) {}
+
+    #[cfg(target_os = "linux")]
+    fn update_tray_check_in(&self) {
+        if let Some(ref tray) = self.tray_state {
+            tray.set_check_in_pending();
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn update_tray_check_in(&self) {}
+
     pub async fn run(mut self) {
         let mut tick_interval = tokio::time::interval(Duration::from_secs(1));
         let mut time_since_check_in = Duration::ZERO;
@@ -202,6 +269,7 @@ impl TimerActor {
                             time_since_check_in = Duration::ZERO;
 
                             self.persist_new_session(mode);
+                            self.update_tray_active();
 
                             if let Some(ref notifier) = self.notifier {
                                 notifier.send_session_start(duration_minutes);
@@ -213,6 +281,7 @@ impl TimerActor {
                                 info!("session stopped");
 
                                 self.persist_session_end();
+                                self.update_tray_inactive();
 
                                 if let Some(ref notifier) = self.notifier {
                                     notifier.send_session_end(total);
@@ -227,6 +296,8 @@ impl TimerActor {
                                     state.paused = true;
                                     info!("session paused");
 
+                                    self.update_tray_paused();
+
                                     if let Some(ref notifier) = self.notifier {
                                         notifier.send_session_paused();
                                     }
@@ -239,6 +310,8 @@ impl TimerActor {
                                     state.paused = false;
                                     state.last_tick = Instant::now();
                                     info!("session resumed");
+
+                                    self.update_tray_active();
 
                                     if let Some(ref notifier) = self.notifier {
                                         notifier.send_session_resumed();
@@ -268,6 +341,7 @@ impl TimerActor {
                             if time_since_check_in >= state.check_in_interval {
                                 debug!("check-in triggered");
                                 self.persist_check_in();
+                                self.update_tray_check_in();
                                 if let Some(ref notifier) = self.notifier {
                                     notifier.send_check_in(self.elapsed_minutes());
                                 }
@@ -278,6 +352,7 @@ impl TimerActor {
                             info!("session completed");
 
                             self.persist_session_end();
+                            self.update_tray_inactive();
 
                             if let Some(ref notifier) = self.notifier {
                                 notifier.send_session_end(total);
@@ -317,9 +392,19 @@ impl TimerActor {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    fn create_test_actor() -> (TimerActor, TimerHandle) {
+        TimerActor::new(None, None, None)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn create_test_actor() -> (TimerActor, TimerHandle) {
+        TimerActor::new(None, None)
+    }
+
     #[tokio::test]
     async fn start_and_get_status() {
-        let (actor, handle) = TimerActor::new(None, None);
+        let (actor, handle) = create_test_actor();
         tokio::spawn(actor.run());
 
         handle
@@ -342,7 +427,7 @@ mod tests {
 
     #[tokio::test]
     async fn pause_and_resume() {
-        let (actor, handle) = TimerActor::new(None, None);
+        let (actor, handle) = create_test_actor();
         tokio::spawn(actor.run());
 
         handle
@@ -371,7 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_clears_session() {
-        let (actor, handle) = TimerActor::new(None, None);
+        let (actor, handle) = create_test_actor();
         tokio::spawn(actor.run());
 
         handle
@@ -393,7 +478,7 @@ mod tests {
 
     #[tokio::test]
     async fn check_in_triggers_at_interval() {
-        let (actor, handle) = TimerActor::new(None, None);
+        let (actor, handle) = create_test_actor();
         tokio::spawn(actor.run());
 
         handle
