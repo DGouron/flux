@@ -24,6 +24,10 @@ enum Commands {
     },
     /// Arrêter la session en cours
     Stop,
+    /// Mettre la session en pause
+    Pause,
+    /// Reprendre une session en pause
+    Resume,
     /// Afficher le statut de la session
     Status {
         /// Afficher en format JSON
@@ -45,6 +49,8 @@ async fn main() {
     let result = match cli.command {
         Commands::Start { duration, mode } => commands::start(duration, mode).await,
         Commands::Stop => commands::stop().await,
+        Commands::Pause => commands::pause().await,
+        Commands::Resume => commands::resume().await,
         Commands::Status { json } => commands::status(json).await,
         Commands::Stats { period } => {
             let period = commands::Period::from_str(&period).unwrap_or(commands::Period::Week);

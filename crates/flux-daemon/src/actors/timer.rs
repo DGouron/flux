@@ -226,6 +226,10 @@ impl TimerActor {
                                 if !state.paused {
                                     state.paused = true;
                                     info!("session paused");
+
+                                    if let Some(ref notifier) = self.notifier {
+                                        notifier.send_session_paused();
+                                    }
                                 }
                             }
                         }
@@ -235,6 +239,10 @@ impl TimerActor {
                                     state.paused = false;
                                     state.last_tick = Instant::now();
                                     info!("session resumed");
+
+                                    if let Some(ref notifier) = self.notifier {
+                                        notifier.send_session_resumed();
+                                    }
                                 }
                             }
                         }

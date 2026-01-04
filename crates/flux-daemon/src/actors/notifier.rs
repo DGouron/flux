@@ -7,6 +7,8 @@ pub enum NotifierMessage {
     SendCheckIn { session_minutes_elapsed: u64 },
     SendSessionStart { duration_minutes: u64 },
     SendSessionEnd { total_minutes: u64 },
+    SendSessionPaused,
+    SendSessionResumed,
     SendAlert { title: String, body: String },
 }
 
@@ -50,6 +52,24 @@ impl NotifierHandle {
                 .await
             {
                 error!(%error, "failed to send session end notification message");
+            }
+        });
+    }
+
+    pub fn send_session_paused(&self) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender.send(NotifierMessage::SendSessionPaused).await {
+                error!(%error, "failed to send session paused notification message");
+            }
+        });
+    }
+
+    pub fn send_session_resumed(&self) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender.send(NotifierMessage::SendSessionResumed).await {
+                error!(%error, "failed to send session resumed notification message");
             }
         });
     }
@@ -107,6 +127,12 @@ impl NotifierActor {
                 NotifierMessage::SendSessionEnd { total_minutes } => {
                     self.send_session_end_notification(total_minutes);
                 }
+                NotifierMessage::SendSessionPaused => {
+                    self.send_session_paused_notification();
+                }
+                NotifierMessage::SendSessionResumed => {
+                    self.send_session_resumed_notification();
+                }
                 NotifierMessage::SendAlert { title, body } => {
                     self.send_alert_notification(&title, &body);
                 }
@@ -154,6 +180,34 @@ impl NotifierActor {
             }
             Err(error) => {
                 warn!(%error, "failed to show session end notification");
+            }
+        }
+    }
+
+    fn send_session_paused_notification(&self) {
+        match self
+            .build_notification("Flux - Pause", "Session mise en pause")
+            .show()
+        {
+            Ok(_) => {
+                debug!("session paused notification sent");
+            }
+            Err(error) => {
+                warn!(%error, "failed to show session paused notification");
+            }
+        }
+    }
+
+    fn send_session_resumed_notification(&self) {
+        match self
+            .build_notification("Flux - Reprise", "Session reprise. Bonne concentration !")
+            .show()
+        {
+            Ok(_) => {
+                debug!("session resumed notification sent");
+            }
+            Err(error) => {
+                warn!(%error, "failed to show session resumed notification");
             }
         }
     }
