@@ -4,12 +4,12 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 pub enum NotifierMessage {
-    SendCheckIn { session_minutes_elapsed: u64 },
-    SendSessionStart { duration_minutes: u64 },
-    SendSessionEnd { total_minutes: u64 },
-    SendSessionPaused,
-    SendSessionResumed,
-    SendAlert { title: String, body: String },
+    CheckIn { session_minutes_elapsed: u64 },
+    SessionStart { duration_minutes: u64 },
+    SessionEnd { total_minutes: u64 },
+    SessionPaused,
+    SessionResumed,
+    Alert { title: String, body: String },
 }
 
 #[derive(Clone)]
@@ -22,7 +22,7 @@ impl NotifierHandle {
         let sender = self.sender.clone();
         tokio::spawn(async move {
             if let Err(error) = sender
-                .send(NotifierMessage::SendCheckIn {
+                .send(NotifierMessage::CheckIn {
                     session_minutes_elapsed,
                 })
                 .await
@@ -36,7 +36,7 @@ impl NotifierHandle {
         let sender = self.sender.clone();
         tokio::spawn(async move {
             if let Err(error) = sender
-                .send(NotifierMessage::SendSessionStart { duration_minutes })
+                .send(NotifierMessage::SessionStart { duration_minutes })
                 .await
             {
                 error!(%error, "failed to send session start notification message");
@@ -48,7 +48,7 @@ impl NotifierHandle {
         let sender = self.sender.clone();
         tokio::spawn(async move {
             if let Err(error) = sender
-                .send(NotifierMessage::SendSessionEnd { total_minutes })
+                .send(NotifierMessage::SessionEnd { total_minutes })
                 .await
             {
                 error!(%error, "failed to send session end notification message");
@@ -59,7 +59,7 @@ impl NotifierHandle {
     pub fn send_session_paused(&self) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender.send(NotifierMessage::SendSessionPaused).await {
+            if let Err(error) = sender.send(NotifierMessage::SessionPaused).await {
                 error!(%error, "failed to send session paused notification message");
             }
         });
@@ -68,7 +68,7 @@ impl NotifierHandle {
     pub fn send_session_resumed(&self) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender.send(NotifierMessage::SendSessionResumed).await {
+            if let Err(error) = sender.send(NotifierMessage::SessionResumed).await {
                 error!(%error, "failed to send session resumed notification message");
             }
         });
@@ -77,7 +77,10 @@ impl NotifierHandle {
     pub fn send_alert(&self, title: String, body: String) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender.send(NotifierMessage::SendAlert { title, body }).await {
+            if let Err(error) = sender
+                .send(NotifierMessage::Alert { title, body })
+                .await
+            {
                 error!(%error, "failed to send alert notification message");
             }
         });
@@ -116,24 +119,24 @@ impl NotifierActor {
 
         while let Some(message) = self.receiver.recv().await {
             match message {
-                NotifierMessage::SendCheckIn {
+                NotifierMessage::CheckIn {
                     session_minutes_elapsed,
                 } => {
                     self.send_check_in_notification(session_minutes_elapsed);
                 }
-                NotifierMessage::SendSessionStart { duration_minutes } => {
+                NotifierMessage::SessionStart { duration_minutes } => {
                     self.send_session_start_notification(duration_minutes);
                 }
-                NotifierMessage::SendSessionEnd { total_minutes } => {
+                NotifierMessage::SessionEnd { total_minutes } => {
                     self.send_session_end_notification(total_minutes);
                 }
-                NotifierMessage::SendSessionPaused => {
+                NotifierMessage::SessionPaused => {
                     self.send_session_paused_notification();
                 }
-                NotifierMessage::SendSessionResumed => {
+                NotifierMessage::SessionResumed => {
                     self.send_session_resumed_notification();
                 }
-                NotifierMessage::SendAlert { title, body } => {
+                NotifierMessage::Alert { title, body } => {
                     self.send_alert_notification(&title, &body);
                 }
             }
@@ -159,9 +162,15 @@ impl NotifierActor {
     }
 
     fn send_session_start_notification(&self, duration_minutes: u64) {
-        let body = format!("Session focus de {}min démarrée. Bonne concentration !", duration_minutes);
+        let body = format!(
+            "Session focus de {}min démarrée. Bonne concentration !",
+            duration_minutes
+        );
 
-        match self.build_notification("Flux - Session démarrée", &body).show() {
+        match self
+            .build_notification("Flux - Session démarrée", &body)
+            .show()
+        {
             Ok(_) => {
                 debug!(duration_minutes, "session start notification sent");
             }
@@ -174,7 +183,10 @@ impl NotifierActor {
     fn send_session_end_notification(&self, total_minutes: u64) {
         let body = format!("Session de {}min terminée. Bien joué !", total_minutes);
 
-        match self.build_notification("Flux - Session terminée", &body).show() {
+        match self
+            .build_notification("Flux - Session terminée", &body)
+            .show()
+        {
             Ok(_) => {
                 debug!(total_minutes, "session end notification sent");
             }

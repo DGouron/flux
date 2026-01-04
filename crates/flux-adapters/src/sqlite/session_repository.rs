@@ -12,9 +12,10 @@ pub struct SqliteSessionRepository {
 
 impl SqliteSessionRepository {
     pub fn new(path: &Path) -> Result<Self, SessionRepositoryError> {
-        let connection = Connection::open(path).map_err(|error| SessionRepositoryError::Storage {
-            message: error.to_string(),
-        })?;
+        let connection =
+            Connection::open(path).map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
 
         let repository = Self {
             connection: Mutex::new(connection),
@@ -84,11 +85,9 @@ impl SessionRepository for SqliteSessionRepository {
     }
 
     fn update(&self, session: &Session) -> Result<(), SessionRepositoryError> {
-        let id = session
-            .id
-            .ok_or_else(|| SessionRepositoryError::Storage {
-                message: "cannot update session without id".to_string(),
-            })?;
+        let id = session.id.ok_or_else(|| SessionRepositoryError::Storage {
+            message: "cannot update session without id".to_string(),
+        })?;
 
         let connection = self.connection.lock().unwrap();
 

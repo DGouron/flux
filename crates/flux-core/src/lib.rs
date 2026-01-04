@@ -10,5 +10,9 @@ pub mod secrets;
 
 pub use config::{Config, ConfigError, FocusConfig, NotificationConfig, NotificationUrgency};
 pub use domain::{FocusMode, Provider, ReviewAction, ReviewEvent, Session, SessionId};
-pub use ports::{ReviewActivityGateway, ReviewGatewayError, SessionRepository, SessionRepositoryError};
-pub use secrets::{resolve_gitlab_credentials, resolve_github_credentials, ProviderCredentials, SecretsError};
+pub use ports::{
+    ReviewActivityGateway, ReviewGatewayError, SessionRepository, SessionRepositoryError,
+};
+pub use secrets::{
+    resolve_github_credentials, resolve_gitlab_credentials, ProviderCredentials, SecretsError,
+};

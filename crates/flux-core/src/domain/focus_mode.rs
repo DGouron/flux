@@ -40,7 +40,11 @@ mod tests {
 
     #[test]
     fn focus_mode_roundtrip_for_known_variants() {
-        let modes = [FocusMode::Prompting, FocusMode::Review, FocusMode::Architecture];
+        let modes = [
+            FocusMode::Prompting,
+            FocusMode::Review,
+            FocusMode::Architecture,
+        ];
 
         for mode in modes {
             let stored = mode.as_str();
