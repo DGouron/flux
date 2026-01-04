@@ -24,4 +24,6 @@ async-trait = "0.1"
 chrono = { version = "0.4.31", features = ["serde"] }
 ureq = { version = "2.9.1", features = ["json"] }
 futures = "0.3"
+dirs = "5.0"
+toml = "0.8"
 flux-core = { path = "crates/flux-core" }
