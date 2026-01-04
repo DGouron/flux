@@ -77,10 +77,7 @@ impl NotifierHandle {
     pub fn send_alert(&self, title: String, body: String) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender
-                .send(NotifierMessage::Alert { title, body })
-                .await
-            {
+            if let Err(error) = sender.send(NotifierMessage::Alert { title, body }).await {
                 error!(%error, "failed to send alert notification message");
             }
         });
