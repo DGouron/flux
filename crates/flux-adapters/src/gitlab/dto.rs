@@ -25,7 +25,10 @@ impl GitLabEvent {
             title: self.target_title.unwrap_or_default(),
             action: Self::parse_action(&self.action_name),
             timestamp: self.created_at,
-            url: format!("{}/projects/{}/merge_requests/{}", base_url, project_id, target_id),
+            url: format!(
+                "{}/projects/{}/merge_requests/{}",
+                base_url, project_id, target_id
+            ),
             provider: Provider::GitLab,
         }
     }

@@ -111,11 +111,12 @@ impl ReviewActivityGateway for GitLabReviewGateway {
 
         let gateway = GitLabReviewGateway::new(base_url, token, user_id);
 
-        let merge_requests = tokio::task::spawn_blocking(move || gateway.fetch_pending_merge_requests())
-            .await
-            .map_err(|error| ReviewGatewayError::Network {
-                message: format!("task join error: {}", error),
-            })??;
+        let merge_requests =
+            tokio::task::spawn_blocking(move || gateway.fetch_pending_merge_requests())
+                .await
+                .map_err(|error| ReviewGatewayError::Network {
+                    message: format!("task join error: {}", error),
+                })??;
 
         tracing::debug!(
             merge_request_count = merge_requests.len(),
