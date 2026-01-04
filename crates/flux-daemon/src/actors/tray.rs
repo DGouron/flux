@@ -1,8 +1,10 @@
+use flux_core::FocusMode;
 use ksni::{self, menu::StandardItem, Icon, MenuItem, TrayService};
 use std::process::Command;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone)]
@@ -24,6 +26,13 @@ pub enum TrayState {
     CheckInPending,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct TrayDisplayInfo {
+    pub state: TrayState,
+    pub remaining: Option<Duration>,
+    pub mode: Option<FocusMode>,
+}
+
 impl TrayState {
     fn icon_name(&self) -> &'static str {
         match self {
@@ -33,19 +42,52 @@ impl TrayState {
             TrayState::CheckInPending => "dialog-warning",
         }
     }
+}
 
-    fn tooltip_description(&self) -> &'static str {
-        match self {
-            TrayState::Inactive => "Aucune session active",
-            TrayState::Active => "Session focus en cours",
-            TrayState::Paused => "Session en pause",
-            TrayState::CheckInPending => "Check-in en attente",
+impl TrayDisplayInfo {
+    fn format_remaining(&self) -> String {
+        match self.remaining {
+            Some(duration) => {
+                let total_secs = duration.as_secs();
+                let minutes = total_secs / 60;
+                let seconds = total_secs % 60;
+                format!("{:02}:{:02}", minutes, seconds)
+            }
+            None => String::new(),
+        }
+    }
+
+    fn format_mode(&self) -> String {
+        self.mode
+            .as_ref()
+            .map(|mode| format!("({})", mode))
+            .unwrap_or_default()
+    }
+
+    fn tooltip_description(&self) -> String {
+        match self.state {
+            TrayState::Inactive => "No active session".to_string(),
+            TrayState::Active => {
+                let time = self.format_remaining();
+                let mode = self.format_mode();
+                if mode.is_empty() {
+                    format!("{} remaining", time)
+                } else {
+                    format!("{} remaining {}", time, mode)
+                }
+            }
+            TrayState::Paused => {
+                let time = self.format_remaining();
+                format!("Paused ({} remaining)", time)
+            }
+            TrayState::CheckInPending => "Check-in pending".to_string(),
         }
     }
 }
 
 struct FluxTray {
     state: Arc<Mutex<TrayState>>,
+    display_info: Arc<Mutex<TrayDisplayInfo>>,
     action_sender: Sender<TrayAction>,
 }
 
@@ -68,10 +110,10 @@ impl ksni::Tray for FluxTray {
     }
 
     fn tool_tip(&self) -> ksni::ToolTip {
-        let state = self.state.lock().unwrap();
+        let display_info = self.display_info.lock().unwrap();
         ksni::ToolTip {
             title: "Flux".to_string(),
-            description: state.tooltip_description().to_string(),
+            description: display_info.tooltip_description(),
             icon_name: String::new(),
             icon_pixmap: vec![],
         }
@@ -175,36 +217,57 @@ impl ksni::Tray for FluxTray {
 #[derive(Clone)]
 pub struct TrayStateHandle {
     state: Arc<Mutex<TrayState>>,
+    display_info: Arc<Mutex<TrayDisplayInfo>>,
     ksni_handle: ksni::Handle<FluxTray>,
 }
 
 impl TrayStateHandle {
-    pub fn set_state(&self, new_state: TrayState) {
+    fn update_display(
+        &self,
+        new_state: TrayState,
+        remaining: Option<Duration>,
+        mode: Option<FocusMode>,
+    ) {
         {
             let mut state = self.state.lock().unwrap();
-            if *state == new_state {
-                return;
-            }
             *state = new_state;
         }
-        debug!(?new_state, "tray state updated");
+        {
+            let mut info = self.display_info.lock().unwrap();
+            info.state = new_state;
+            info.remaining = remaining;
+            info.mode = mode;
+        }
         self.ksni_handle.update(|_| {});
     }
 
-    pub fn set_active(&self) {
-        self.set_state(TrayState::Active);
+    pub fn set_active(&self, remaining: Duration, mode: FocusMode) {
+        debug!(?remaining, ?mode, "tray set active");
+        self.update_display(TrayState::Active, Some(remaining), Some(mode));
     }
 
-    pub fn set_paused(&self) {
-        self.set_state(TrayState::Paused);
+    pub fn set_paused(&self, remaining: Duration) {
+        debug!(?remaining, "tray set paused");
+        self.update_display(TrayState::Paused, Some(remaining), None);
     }
 
     pub fn set_inactive(&self) {
-        self.set_state(TrayState::Inactive);
+        debug!("tray set inactive");
+        self.update_display(TrayState::Inactive, None, None);
     }
 
     pub fn set_check_in_pending(&self) {
-        self.set_state(TrayState::CheckInPending);
+        debug!("tray set check-in pending");
+        self.update_display(TrayState::CheckInPending, None, None);
+    }
+
+    pub fn update_remaining(&self, remaining: Duration, mode: FocusMode) {
+        {
+            let mut info = self.display_info.lock().unwrap();
+            info.remaining = Some(remaining);
+            info.mode = Some(mode);
+        }
+        self.ksni_handle.update(|_| {});
     }
 }
 
@@ -231,10 +294,12 @@ impl Drop for TrayHandle {
 
 pub fn spawn_tray() -> Result<(TrayHandle, std::sync::mpsc::Receiver<TrayAction>), String> {
     let state = Arc::new(Mutex::new(TrayState::Inactive));
+    let display_info = Arc::new(Mutex::new(TrayDisplayInfo::default()));
     let (action_sender, action_receiver) = std::sync::mpsc::channel();
 
     let tray = FluxTray {
         state: Arc::clone(&state),
+        display_info: Arc::clone(&display_info),
         action_sender,
     };
 
@@ -243,6 +308,7 @@ pub fn spawn_tray() -> Result<(TrayHandle, std::sync::mpsc::Receiver<TrayAction>
 
     let state_handle = TrayStateHandle {
         state,
+        display_info,
         ksni_handle: ksni_handle.clone(),
     };
 
@@ -317,10 +383,42 @@ mod tests {
     }
 
     #[test]
-    fn tray_state_has_tooltips() {
-        assert!(!TrayState::Inactive.tooltip_description().is_empty());
-        assert!(!TrayState::Active.tooltip_description().is_empty());
-        assert!(!TrayState::Paused.tooltip_description().is_empty());
-        assert!(!TrayState::CheckInPending.tooltip_description().is_empty());
+    fn inactive_tooltip_shows_no_session() {
+        let info = TrayDisplayInfo {
+            state: TrayState::Inactive,
+            remaining: None,
+            mode: None,
+        };
+        assert_eq!(info.tooltip_description(), "No active session");
+    }
+
+    #[test]
+    fn active_tooltip_shows_remaining_time_and_mode() {
+        let info = TrayDisplayInfo {
+            state: TrayState::Active,
+            remaining: Some(Duration::from_secs(754)),
+            mode: Some(FocusMode::Prompting),
+        };
+        assert_eq!(info.tooltip_description(), "12:34 remaining (prompting)");
+    }
+
+    #[test]
+    fn paused_tooltip_shows_remaining_time() {
+        let info = TrayDisplayInfo {
+            state: TrayState::Paused,
+            remaining: Some(Duration::from_secs(300)),
+            mode: None,
+        };
+        assert_eq!(info.tooltip_description(), "Paused (05:00 remaining)");
+    }
+
+    #[test]
+    fn check_in_pending_tooltip() {
+        let info = TrayDisplayInfo {
+            state: TrayState::CheckInPending,
+            remaining: None,
+            mode: None,
+        };
+        assert_eq!(info.tooltip_description(), "Check-in pending");
     }
 }

@@ -214,24 +214,34 @@ impl TimerActor {
     }
 
     #[cfg(target_os = "linux")]
-    fn update_tray_active(&self) {
+    fn update_tray_active(&self, remaining: Duration, mode: FocusMode) {
         if let Some(ref tray) = self.tray_state {
-            tray.set_active();
+            tray.set_active(remaining, mode);
         }
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn update_tray_active(&self) {}
+    fn update_tray_active(&self, _remaining: Duration, _mode: FocusMode) {}
 
     #[cfg(target_os = "linux")]
-    fn update_tray_paused(&self) {
+    fn update_tray_paused(&self, remaining: Duration) {
         if let Some(ref tray) = self.tray_state {
-            tray.set_paused();
+            tray.set_paused(remaining);
         }
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn update_tray_paused(&self) {}
+    fn update_tray_paused(&self, _remaining: Duration) {}
+
+    #[cfg(target_os = "linux")]
+    fn update_tray_remaining(&self, remaining: Duration, mode: FocusMode) {
+        if let Some(ref tray) = self.tray_state {
+            tray.update_remaining(remaining, mode);
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn update_tray_remaining(&self, _remaining: Duration, _mode: FocusMode) {}
 
     #[cfg(target_os = "linux")]
     fn update_tray_inactive(&self) {
@@ -274,8 +284,8 @@ impl TimerActor {
                             });
                             time_since_check_in = Duration::ZERO;
 
-                            self.persist_new_session(mode);
-                            self.update_tray_active();
+                            self.persist_new_session(mode.clone());
+                            self.update_tray_active(duration, mode);
 
                             if let Some(ref notifier) = self.notifier {
                                 notifier.send_session_start(duration_minutes);
@@ -300,9 +310,10 @@ impl TimerActor {
                             if let Some(ref mut state) = self.state {
                                 if !state.paused {
                                     state.paused = true;
+                                    let remaining = state.remaining;
                                     info!("session paused");
 
-                                    self.update_tray_paused();
+                                    self.update_tray_paused(remaining);
 
                                     if let Some(ref notifier) = self.notifier {
                                         notifier.send_session_paused();
@@ -315,9 +326,11 @@ impl TimerActor {
                                 if state.paused {
                                     state.paused = false;
                                     state.last_tick = Instant::now();
+                                    let remaining = state.remaining;
+                                    let mode = state.mode.clone();
                                     info!("session resumed");
 
-                                    self.update_tray_active();
+                                    self.update_tray_active(remaining, mode);
 
                                     if let Some(ref notifier) = self.notifier {
                                         notifier.send_session_resumed();
@@ -332,28 +345,34 @@ impl TimerActor {
                     }
                 }
                 _ = tick_interval.tick() => {
-                    if let Some(ref mut state) = self.state {
-                        if state.paused {
-                            continue;
-                        }
+                    let tick_result = {
+                        if let Some(ref mut state) = self.state {
+                            if state.paused {
+                                None
+                            } else {
+                                let elapsed = state.last_tick.elapsed();
+                                state.last_tick = Instant::now();
 
-                        let elapsed = state.last_tick.elapsed();
-                        state.last_tick = Instant::now();
+                                if state.remaining > elapsed {
+                                    state.remaining -= elapsed;
+                                    time_since_check_in += elapsed;
 
-                        if state.remaining > elapsed {
-                            state.remaining -= elapsed;
-                            time_since_check_in += elapsed;
+                                    let remaining = state.remaining;
+                                    let mode = state.mode.clone();
+                                    let needs_check_in = time_since_check_in >= state.check_in_interval;
 
-                            if time_since_check_in >= state.check_in_interval {
-                                debug!("check-in triggered");
-                                self.persist_check_in();
-                                self.update_tray_check_in();
-                                if let Some(ref notifier) = self.notifier {
-                                    notifier.send_check_in(self.elapsed_minutes());
+                                    Some((remaining, mode, needs_check_in, false))
+                                } else {
+                                    Some((Duration::ZERO, state.mode.clone(), false, true))
                                 }
-                                time_since_check_in = Duration::ZERO;
                             }
                         } else {
+                            None
+                        }
+                    };
+
+                    if let Some((remaining, mode, needs_check_in, session_complete)) = tick_result {
+                        if session_complete {
                             let total = self.total_minutes();
                             info!("session completed");
 
@@ -366,6 +385,18 @@ impl TimerActor {
 
                             self.state = None;
                             time_since_check_in = Duration::ZERO;
+                        } else {
+                            self.update_tray_remaining(remaining, mode);
+
+                            if needs_check_in {
+                                debug!("check-in triggered");
+                                self.persist_check_in();
+                                self.update_tray_check_in();
+                                if let Some(ref notifier) = self.notifier {
+                                    notifier.send_check_in(self.elapsed_minutes());
+                                }
+                                time_since_check_in = Duration::ZERO;
+                            }
                         }
                     }
                 }
