@@ -276,19 +276,22 @@ pub fn open_configuration() {
 }
 
 pub fn check_for_updates() {
+    let update_script = "flux update; echo ''; echo 'Appuyez sur Entrée pour fermer...'; read";
     let terminals = ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"];
 
     for terminal in terminals {
         let result = match terminal {
             "gnome-terminal" => Command::new(terminal)
-                .args(["--", "flux", "update"])
+                .args(["--", "bash", "-c", update_script])
                 .spawn(),
             "konsole" => Command::new(terminal)
-                .args(["-e", "flux", "update"])
+                .args(["-e", "bash", "-c", update_script])
                 .spawn(),
-            "xfce4-terminal" => Command::new(terminal).args(["-e", "flux update"]).spawn(),
+            "xfce4-terminal" => Command::new(terminal)
+                .args(["-e", &format!("bash -c '{}'", update_script)])
+                .spawn(),
             "xterm" => Command::new(terminal)
-                .args(["-e", "flux", "update"])
+                .args(["-e", "bash", "-c", update_script])
                 .spawn(),
             _ => continue,
         };

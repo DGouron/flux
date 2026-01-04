@@ -5,7 +5,13 @@ REPO="DGouron/flux"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 get_latest_version() {
-    curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+    local response=$(curl -s "https://api.github.com/repos/$REPO/releases/latest")
+
+    if command -v jq &> /dev/null; then
+        echo "$response" | jq -r '.tag_name'
+    else
+        echo "$response" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4
+    fi
 }
 
 get_architecture() {
