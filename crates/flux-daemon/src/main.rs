@@ -4,7 +4,7 @@ mod server;
 use std::sync::Arc;
 
 #[cfg(target_os = "linux")]
-use actors::spawn_tray;
+use actors::{open_configuration, spawn_tray, TrayAction};
 use actors::{NotifierActor, TimerActor};
 use anyhow::Result;
 use flux_adapters::SqliteSessionRepository;
@@ -43,19 +43,19 @@ async fn main() -> Result<()> {
     tokio::spawn(notifier_actor.run());
 
     #[cfg(target_os = "linux")]
-    let (tray_handle, tray_state) = if config.tray.enabled {
+    let (tray_handle, tray_state, tray_action_receiver) = if config.tray.enabled {
         match spawn_tray() {
-            Ok(handle) => {
+            Ok((handle, action_receiver)) => {
                 let state = handle.state_handle.clone();
-                (Some(handle), Some(state))
+                (Some(handle), Some(state), Some(action_receiver))
             }
             Err(error) => {
                 warn!(%error, "tray initialization failed, continuing without tray");
-                (None, None)
+                (None, None, None)
             }
         }
     } else {
-        (None, None)
+        (None, None, None)
     };
 
     #[cfg(target_os = "linux")]
@@ -70,6 +70,44 @@ async fn main() -> Result<()> {
     #[cfg(not(target_os = "linux"))]
     let (timer_actor, timer_handle) = TimerActor::new(Some(notifier_handle), session_repository);
     tokio::spawn(timer_actor.run());
+
+    #[cfg(target_os = "linux")]
+    if let Some(action_receiver) = tray_action_receiver {
+        let tray_timer_handle = timer_handle.clone();
+        let tray_shutdown_sender = shutdown_sender.clone();
+        std::thread::spawn(move || {
+            while let Ok(action) = action_receiver.recv() {
+                match action {
+                    TrayAction::Pause => {
+                        let handle = tray_timer_handle.clone();
+                        tokio::runtime::Handle::current().spawn(async move {
+                            let _ = handle.pause().await;
+                        });
+                    }
+                    TrayAction::Resume => {
+                        let handle = tray_timer_handle.clone();
+                        tokio::runtime::Handle::current().spawn(async move {
+                            let _ = handle.resume().await;
+                        });
+                    }
+                    TrayAction::Stop => {
+                        let handle = tray_timer_handle.clone();
+                        tokio::runtime::Handle::current().spawn(async move {
+                            let _ = handle.stop().await;
+                        });
+                    }
+                    TrayAction::OpenConfiguration => {
+                        open_configuration();
+                    }
+                    TrayAction::Quit => {
+                        info!("quit requested from tray");
+                        let _ = tray_shutdown_sender.send(());
+                        break;
+                    }
+                }
+            }
+        });
+    }
 
     let server = Server::new(timer_handle, shutdown_sender)?;
     server.run(shutdown_receiver).await?;

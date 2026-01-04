@@ -1,7 +1,18 @@
-use ksni::{self, Icon, TrayService};
+use ksni::{self, menu::StandardItem, Icon, MenuItem, TrayService};
+use std::process::Command;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tracing::{debug, info, warn};
+
+#[derive(Debug, Clone)]
+pub enum TrayAction {
+    Pause,
+    Resume,
+    Stop,
+    OpenConfiguration,
+    Quit,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TrayState {
@@ -34,6 +45,7 @@ impl TrayState {
 
 struct FluxTray {
     state: Arc<Mutex<TrayState>>,
+    action_sender: Sender<TrayAction>,
 }
 
 impl ksni::Tray for FluxTray {
@@ -62,6 +74,92 @@ impl ksni::Tray for FluxTray {
             icon_name: String::new(),
             icon_pixmap: vec![],
         }
+    }
+
+    fn menu(&self) -> Vec<MenuItem<Self>> {
+        let state = *self.state.lock().unwrap();
+        let mut items: Vec<MenuItem<Self>> = vec![];
+
+        match state {
+            TrayState::Inactive => {}
+            TrayState::Active => {
+                items.push(MenuItem::Standard(StandardItem {
+                    label: "Pause".to_string(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.action_sender.send(TrayAction::Pause);
+                    }),
+                    ..Default::default()
+                }));
+                items.push(MenuItem::Standard(StandardItem {
+                    label: "Stop".to_string(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.action_sender.send(TrayAction::Stop);
+                    }),
+                    ..Default::default()
+                }));
+            }
+            TrayState::Paused => {
+                items.push(MenuItem::Standard(StandardItem {
+                    label: "Resume".to_string(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.action_sender.send(TrayAction::Resume);
+                    }),
+                    ..Default::default()
+                }));
+                items.push(MenuItem::Standard(StandardItem {
+                    label: "Stop".to_string(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.action_sender.send(TrayAction::Stop);
+                    }),
+                    ..Default::default()
+                }));
+            }
+            TrayState::CheckInPending => {
+                items.push(MenuItem::Standard(StandardItem {
+                    label: "Continue".to_string(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.action_sender.send(TrayAction::Resume);
+                    }),
+                    ..Default::default()
+                }));
+                items.push(MenuItem::Standard(StandardItem {
+                    label: "Pause".to_string(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.action_sender.send(TrayAction::Pause);
+                    }),
+                    ..Default::default()
+                }));
+                items.push(MenuItem::Standard(StandardItem {
+                    label: "Stop".to_string(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.action_sender.send(TrayAction::Stop);
+                    }),
+                    ..Default::default()
+                }));
+            }
+        }
+
+        if !items.is_empty() {
+            items.push(MenuItem::Separator);
+        }
+
+        items.push(MenuItem::Standard(StandardItem {
+            label: "Open configuration".to_string(),
+            activate: Box::new(|tray: &mut Self| {
+                let _ = tray.action_sender.send(TrayAction::OpenConfiguration);
+            }),
+            ..Default::default()
+        }));
+
+        items.push(MenuItem::Standard(StandardItem {
+            label: "Quit".to_string(),
+            activate: Box::new(|tray: &mut Self| {
+                let _ = tray.action_sender.send(TrayAction::Quit);
+            }),
+            ..Default::default()
+        }));
+
+        items
     }
 }
 
@@ -122,10 +220,13 @@ impl Drop for TrayHandle {
     }
 }
 
-pub fn spawn_tray() -> Result<TrayHandle, String> {
+pub fn spawn_tray() -> Result<(TrayHandle, std::sync::mpsc::Receiver<TrayAction>), String> {
     let state = Arc::new(Mutex::new(TrayState::Inactive));
+    let (action_sender, action_receiver) = std::sync::mpsc::channel();
+
     let tray = FluxTray {
         state: Arc::clone(&state),
+        action_sender,
     };
 
     let service = TrayService::new(tray);
@@ -147,11 +248,22 @@ pub fn spawn_tray() -> Result<TrayHandle, String> {
         })
         .map_err(|error| format!("failed to spawn tray thread: {}", error))?;
 
-    Ok(TrayHandle {
+    let handle = TrayHandle {
         ksni_handle,
         thread_handle: Some(thread_handle),
         state_handle,
-    })
+    };
+
+    Ok((handle, action_receiver))
+}
+
+pub fn open_configuration() {
+    if let Some(config_dir) = dirs::config_dir() {
+        let config_path = config_dir.join("flux").join("config.toml");
+        if let Err(error) = Command::new("xdg-open").arg(&config_path).spawn() {
+            warn!(%error, "failed to open configuration file");
+        }
+    }
 }
 
 #[cfg(test)]
