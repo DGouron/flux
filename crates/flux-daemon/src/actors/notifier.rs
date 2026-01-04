@@ -1,5 +1,5 @@
 use flux_core::NotificationUrgency;
-use notify_rust::{Notification, Urgency};
+use notify_rust::{Hint, Notification, Urgency};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
@@ -237,7 +237,7 @@ impl NotifierActor {
         notification
             .summary(summary)
             .body(body)
-            .urgency(self.urgency)
+            .hint(Hint::Urgency(self.urgency))
             .appname("Flux");
 
         if self.sound_enabled {
