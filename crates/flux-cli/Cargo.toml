@@ -24,6 +24,8 @@ flux-protocol = { path = "../flux-protocol" }
 flux-core = { path = "../flux-core" }
 flux-adapters = { path = "../flux-adapters" }
 which.workspace = true
+dialoguer.workspace = true
+toml.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

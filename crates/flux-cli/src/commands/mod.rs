@@ -1,3 +1,4 @@
+mod init;
 mod pause;
 mod resume;
 mod start;
@@ -5,6 +6,7 @@ mod stats;
 mod status;
 mod stop;
 
+pub use init::{config_exists, execute as init};
 pub use pause::execute as pause;
 pub use resume::execute as resume;
 pub use start::execute as start;

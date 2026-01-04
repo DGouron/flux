@@ -14,6 +14,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialiser la configuration de Flux
+    Init {
+        /// Écraser la configuration existante
+        #[arg(long)]
+        force: bool,
+    },
     /// Démarrer une session focus
     Start {
         /// Durée en minutes (défaut: 25)
@@ -48,7 +54,14 @@ async fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Start { duration, mode } => commands::start(duration, mode).await,
+        Commands::Init { force } => commands::init(force),
+        Commands::Start { duration, mode } => {
+            if !commands::config_exists() {
+                eprintln!("Erreur: Aucune configuration trouvée. Lancez `flux init` pour configurer Flux.");
+                std::process::exit(1);
+            }
+            commands::start(duration, mode).await
+        }
         Commands::Stop => commands::stop().await,
         Commands::Pause => commands::pause().await,
         Commands::Resume => commands::resume().await,
