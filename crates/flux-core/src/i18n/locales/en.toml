@@ -17,6 +17,48 @@ current = "Current language: {name} ({code})"
 set = "Language set: {name}"
 unsupported = "Unsupported language: {lang}. Available: en, fr"
 
+[command]
+# Start command
+start_success = "🚀 Focus session started"
+start_duration = "   Duration: {duration} min"
+start_mode = "   Mode: {mode}"
+
+# Stop command
+stop_success = "🛑 Focus session ended"
+stop_daemon_stopped = "   Daemon stopped"
+
+# Pause command
+pause_success = "⏸️  Session paused"
+pause_already = "⏸️  Session already paused"
+
+# Resume command
+resume_success = "▶️  Session resumed"
+resume_already_active = "🟢 Session already active"
+
+# Status command
+status_header = "📊 Flux Status"
+status_duration = "Duration"
+status_elapsed = "Elapsed"
+status_remaining = "Remaining"
+status_mode = "Mode"
+status_check_ins = "Check-ins"
+status_state_active = "🟢 Active"
+status_state_paused = "⏸️  Paused"
+
+# Stats command
+stats_header = "📊 Flux Statistics"
+stats_period_label = "Period"
+stats_period_today = "today"
+stats_period_week = "this week"
+stats_period_month = "this month"
+stats_period_all = "all time"
+stats_total_sessions = "Total sessions"
+stats_completed = "Completed"
+stats_total_time = "Total time"
+stats_average_duration = "Average duration"
+stats_check_ins = "Check-ins"
+stats_no_sessions = "No sessions for this period"
+
 [session]
 started = "Focus session started"
 stopped = "Focus session ended"
@@ -24,7 +66,7 @@ paused = "Session paused"
 resumed = "Session resumed"
 
 [status]
-no_session = "No active session"
+no_session = "⚪ No active session"
 active = "Active session"
 paused = "Session paused"
 
@@ -41,5 +83,15 @@ resumed_title = "Resumed"
 resumed_body = "Session resumed. Stay focused!"
 
 [error]
-daemon_not_running = "Daemon is not running"
+daemon_not_running = "⚫ Daemon is not running"
+daemon_not_running_hint = "   Start it first: flux start"
 config_not_found = "Configuration not found. Run `flux init` first."
+unexpected_response = "Unexpected response from daemon"
+connection_timeout = "Connection timeout to daemon"
+unable_to_get_status = "Unable to get status"
+unable_to_start_session = "Unable to start session"
+unable_to_stop_session = "Unable to stop session"
+unable_to_pause_session = "Unable to pause session"
+unable_to_resume_session = "Unable to resume session"
+persistence_error_title = "Flux - Error"
+persistence_error_body = "Unable to save session. Data may be lost."

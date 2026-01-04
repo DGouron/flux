@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use chrono::{Duration, Local, Utc};
 use flux_adapters::SqliteSessionRepository;
-use flux_core::{Session, SessionRepository};
+use flux_core::{Config, Session, SessionRepository, Translator};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Period {
@@ -24,44 +24,51 @@ impl Period {
         }
     }
 
-    fn label(&self) -> &'static str {
+    fn label(&self, translator: &Translator) -> String {
         match self {
-            Period::Today => "aujourd'hui",
-            Period::Week => "cette semaine",
-            Period::Month => "ce mois",
-            Period::All => "toutes les sessions",
+            Period::Today => translator.get("command.stats_period_today"),
+            Period::Week => translator.get("command.stats_period_week"),
+            Period::Month => translator.get("command.stats_period_month"),
+            Period::All => translator.get("command.stats_period_all"),
         }
     }
 }
 
 pub async fn execute(period: Period) -> Result<()> {
+    let translator = get_translator();
     let repository = open_repository()?;
     let sessions = fetch_sessions(&repository, period)?;
 
     if sessions.is_empty() {
-        println!("Aucune session terminée pour {}.", period.label());
+        println!("{}", translator.get("command.stats_no_sessions"));
         return Ok(());
     }
 
     let stats = compute_stats(&sessions);
-    display_stats(&stats, period);
+    display_stats(&stats, period, &translator);
 
     Ok(())
 }
 
+fn get_translator() -> Translator {
+    Config::load()
+        .map(|config| Translator::new(config.general.language))
+        .unwrap_or_default()
+}
+
 fn open_repository() -> Result<SqliteSessionRepository> {
     let data_dir = dirs::data_dir()
-        .context("impossible de trouver le répertoire de données")?
+        .context("cannot find data directory")?
         .join("flux");
 
     let database_path = data_dir.join("sessions.db");
 
     if !database_path.exists() {
-        anyhow::bail!("aucune donnée de session. Lancez d'abord une session avec 'flux start'.");
+        anyhow::bail!("no session data. Start a session first with 'flux start'.");
     }
 
     SqliteSessionRepository::new(&database_path)
-        .map_err(|error| anyhow::anyhow!("erreur d'accès à la base: {}", error))
+        .map_err(|error| anyhow::anyhow!("database access error: {}", error))
 }
 
 fn fetch_sessions(repository: &SqliteSessionRepository, period: Period) -> Result<Vec<Session>> {
@@ -80,7 +87,7 @@ fn fetch_sessions(repository: &SqliteSessionRepository, period: Period) -> Resul
 
     repository
         .find_completed_since(since)
-        .map_err(|error| anyhow::anyhow!("erreur de lecture: {}", error))
+        .map_err(|error| anyhow::anyhow!("read error: {}", error))
 }
 
 struct Stats {
@@ -112,16 +119,28 @@ fn compute_stats(sessions: &[Session]) -> Stats {
     }
 }
 
-fn display_stats(stats: &Stats, period: Period) {
+fn display_stats(stats: &Stats, period: Period, translator: &Translator) {
     println!();
-    println!("📊 Flux Stats ({})", period.label());
+    println!(
+        "{} ({})",
+        translator.get("command.stats_header"),
+        period.label(translator)
+    );
     println!();
-    println!("Temps total:    {}", format_duration(stats.total_seconds));
-    println!("Sessions:       {}", stats.session_count);
+    println!(
+        "{}: {}",
+        translator.get("command.stats_total_time"),
+        format_duration(stats.total_seconds)
+    );
+    println!(
+        "{}: {}",
+        translator.get("command.stats_total_sessions"),
+        stats.session_count
+    );
     println!();
 
     if !stats.by_mode.is_empty() {
-        println!("Par mode:");
+        println!("{}:", translator.get("command.status_mode"));
 
         let mut modes: Vec<_> = stats.by_mode.iter().collect();
         modes.sort_by(|a, b| b.1.cmp(a.1));
@@ -148,11 +167,19 @@ fn display_stats(stats: &Stats, period: Period) {
 
     if stats.session_count > 0 {
         let avg_seconds = stats.total_seconds / stats.session_count as i64;
-        println!("Session moyenne: {}", format_duration(avg_seconds));
+        println!(
+            "{}: {}",
+            translator.get("command.stats_average_duration"),
+            format_duration(avg_seconds)
+        );
     }
 
     if stats.total_check_ins > 0 {
-        println!("Check-ins:       {}", stats.total_check_ins);
+        println!(
+            "{}: {}",
+            translator.get("command.stats_check_ins"),
+            stats.total_check_ins
+        );
     }
 
     println!();

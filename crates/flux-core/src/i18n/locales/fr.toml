@@ -17,6 +17,48 @@ current = "Langue actuelle : {name} ({code})"
 set = "Langue définie : {name}"
 unsupported = "Langue non supportée : {lang}. Disponibles : en, fr"
 
+[command]
+# Start command
+start_success = "🚀 Session focus démarrée"
+start_duration = "   Durée : {duration} min"
+start_mode = "   Mode : {mode}"
+
+# Stop command
+stop_success = "🛑 Session focus terminée"
+stop_daemon_stopped = "   Daemon arrêté"
+
+# Pause command
+pause_success = "⏸️  Session mise en pause"
+pause_already = "⏸️  Session déjà en pause"
+
+# Resume command
+resume_success = "▶️  Session reprise"
+resume_already_active = "🟢 Session déjà active"
+
+# Status command
+status_header = "📊 Statut Flux"
+status_duration = "Durée"
+status_elapsed = "Écoulé"
+status_remaining = "Restant"
+status_mode = "Mode"
+status_check_ins = "Check-ins"
+status_state_active = "🟢 Active"
+status_state_paused = "⏸️  En pause"
+
+# Stats command
+stats_header = "📊 Statistiques Flux"
+stats_period_label = "Période"
+stats_period_today = "aujourd'hui"
+stats_period_week = "cette semaine"
+stats_period_month = "ce mois"
+stats_period_all = "depuis le début"
+stats_total_sessions = "Sessions totales"
+stats_completed = "Terminées"
+stats_total_time = "Temps total"
+stats_average_duration = "Durée moyenne"
+stats_check_ins = "Check-ins"
+stats_no_sessions = "Aucune session pour cette période"
+
 [session]
 started = "Session focus démarrée"
 stopped = "Session focus terminée"
@@ -24,7 +66,7 @@ paused = "Session en pause"
 resumed = "Session reprise"
 
 [status]
-no_session = "Aucune session active"
+no_session = "⚪ Aucune session active"
 active = "Session active"
 paused = "Session en pause"
 
@@ -41,5 +83,15 @@ resumed_title = "Reprise"
 resumed_body = "Session reprise. Bonne concentration !"
 
 [error]
-daemon_not_running = "Le daemon n'est pas démarré"
+daemon_not_running = "⚫ Le daemon n'est pas démarré"
+daemon_not_running_hint = "   Lancez d'abord : flux start"
 config_not_found = "Configuration introuvable. Lancez `flux init` d'abord."
+unexpected_response = "Réponse inattendue du daemon"
+connection_timeout = "Timeout de connexion au daemon"
+unable_to_get_status = "Impossible de récupérer le statut"
+unable_to_start_session = "Impossible de démarrer la session"
+unable_to_stop_session = "Impossible d'arrêter la session"
+unable_to_pause_session = "Impossible de mettre en pause"
+unable_to_resume_session = "Impossible de reprendre la session"
+persistence_error_title = "Flux - Erreur"
+persistence_error_body = "Impossible de sauvegarder la session. Les données pourraient être perdues."

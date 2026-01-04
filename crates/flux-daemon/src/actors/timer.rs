@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info};
 
-use flux_core::{FocusMode, Session, SessionRepository};
+use flux_core::{Config, FocusMode, Session, SessionRepository, Translator};
 
 use super::NotifierHandle;
 #[cfg(target_os = "linux")]
@@ -199,12 +199,18 @@ impl TimerActor {
 
     fn notify_persistence_error(&self) {
         if let Some(ref notifier) = self.notifier {
+            let translator = Self::get_translator();
             notifier.send_alert(
-                "Flux - Erreur".to_string(),
-                "Impossible de sauvegarder la session. Les données pourraient être perdues."
-                    .to_string(),
+                translator.get("error.persistence_error_title"),
+                translator.get("error.persistence_error_body"),
             );
         }
+    }
+
+    fn get_translator() -> Translator {
+        Config::load()
+            .map(|config| Translator::new(config.general.language))
+            .unwrap_or_default()
     }
 
     #[cfg(target_os = "linux")]

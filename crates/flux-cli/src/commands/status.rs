@@ -1,5 +1,6 @@
 use crate::client::{ClientError, DaemonClient};
 use anyhow::Result;
+use flux_core::{Config, Translator};
 use flux_protocol::{FocusMode, Request, Response};
 use serde::Serialize;
 
@@ -13,6 +14,7 @@ struct StatusOutput {
 }
 
 pub async fn execute(json: bool) -> Result<()> {
+    let translator = get_translator();
     let client = DaemonClient::new();
 
     match client.send(Request::GetStatus).await {
@@ -25,14 +27,14 @@ pub async fn execute(json: bool) -> Result<()> {
             if json {
                 print_json(active, remaining_seconds, mode, paused)?;
             } else {
-                print_formatted(active, remaining_seconds, mode, paused);
+                print_formatted(active, remaining_seconds, mode, paused, &translator);
             }
         }
         Ok(Response::Error { message }) => {
             if json {
                 println!(r#"{{"error": "{}"}}"#, message);
             } else {
-                eprintln!("Erreur: {}", message);
+                eprintln!("Error: {}", message);
             }
             std::process::exit(1);
         }
@@ -40,7 +42,7 @@ pub async fn execute(json: bool) -> Result<()> {
             if json {
                 println!(r#"{{"error": "unexpected response"}}"#);
             } else {
-                eprintln!("Erreur: réponse inattendue du daemon");
+                eprintln!("Error: {}", translator.get("error.unexpected_response"));
             }
             std::process::exit(1);
         }
@@ -48,14 +50,14 @@ pub async fn execute(json: bool) -> Result<()> {
             if json {
                 println!(r#"{{"error": "daemon not running", "active": false}}"#);
             } else {
-                println!("⚫ Daemon non démarré");
+                println!("{}", translator.get("error.daemon_not_running"));
             }
         }
         Err(ClientError::Timeout) => {
             if json {
                 println!(r#"{{"error": "timeout"}}"#);
             } else {
-                eprintln!("Erreur: timeout de connexion au daemon");
+                eprintln!("Error: {}", translator.get("error.connection_timeout"));
             }
             std::process::exit(1);
         }
@@ -63,13 +65,19 @@ pub async fn execute(json: bool) -> Result<()> {
             if json {
                 println!(r#"{{"error": "{}"}}"#, error);
             } else {
-                eprintln!("Erreur: {}", error);
+                eprintln!("Error: {}", error);
             }
             std::process::exit(1);
         }
     }
 
     Ok(())
+}
+
+fn get_translator() -> Translator {
+    Config::load()
+        .map(|config| Translator::new(config.general.language))
+        .unwrap_or_default()
 }
 
 fn print_json(
@@ -89,23 +97,37 @@ fn print_json(
     Ok(())
 }
 
-fn print_formatted(active: bool, remaining_seconds: u64, mode: Option<FocusMode>, paused: bool) {
+fn print_formatted(
+    active: bool,
+    remaining_seconds: u64,
+    mode: Option<FocusMode>,
+    paused: bool,
+    translator: &Translator,
+) {
     if !active {
-        println!("⚪ Aucune session active");
+        println!("{}", translator.get("status.no_session"));
         return;
     }
 
     if paused {
-        println!("⏸️  Session en pause");
+        println!("{}", translator.get("command.status_state_paused"));
     } else {
-        println!("🟢 Session focus active");
+        println!("{}", translator.get("command.status_state_active"));
     }
 
     if let Some(focus_mode) = mode {
-        println!("   Mode: {}", format_mode(focus_mode));
+        println!(
+            "   {}: {}",
+            translator.get("command.status_mode"),
+            format_mode(focus_mode)
+        );
     }
 
-    println!("   Temps restant: {}", format_duration(remaining_seconds));
+    println!(
+        "   {}: {}",
+        translator.get("command.status_remaining"),
+        format_duration(remaining_seconds)
+    );
 }
 
 fn format_mode(mode: FocusMode) -> String {

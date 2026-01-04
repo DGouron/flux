@@ -1,5 +1,6 @@
 use crate::actors::TimerHandle;
 use anyhow::{Context, Result};
+use flux_core::{Config, Translator};
 use flux_protocol::{FocusMode, Request, Response};
 use interprocess::local_socket::{
     tokio::{prelude::*, Stream},
@@ -144,11 +145,19 @@ async fn handle_connection(
     Ok(())
 }
 
+fn get_translator() -> Translator {
+    Config::load()
+        .map(|config| Translator::new(config.general.language))
+        .unwrap_or_default()
+}
+
 async fn handle_request(
     request: Request,
     timer_handle: &TimerHandle,
     shutdown_sender: &tokio::sync::broadcast::Sender<()>,
 ) -> Response {
+    let translator = get_translator();
+
     match request {
         Request::Ping => Response::Pong,
 
@@ -168,7 +177,7 @@ async fn handle_request(
                 }
             } else {
                 Response::Error {
-                    message: "impossible de récupérer le statut".to_string(),
+                    message: translator.get("error.unable_to_get_status"),
                 }
             }
         }
@@ -189,7 +198,7 @@ async fn handle_request(
                 Response::Ok
             } else {
                 Response::Error {
-                    message: "impossible de démarrer la session".to_string(),
+                    message: translator.get("error.unable_to_start_session"),
                 }
             }
         }
@@ -199,7 +208,7 @@ async fn handle_request(
                 Response::Ok
             } else {
                 Response::Error {
-                    message: "impossible d'arrêter la session".to_string(),
+                    message: translator.get("error.unable_to_stop_session"),
                 }
             }
         }
@@ -209,7 +218,7 @@ async fn handle_request(
                 Response::Ok
             } else {
                 Response::Error {
-                    message: "impossible de mettre en pause".to_string(),
+                    message: translator.get("error.unable_to_pause_session"),
                 }
             }
         }
@@ -219,7 +228,7 @@ async fn handle_request(
                 Response::Ok
             } else {
                 Response::Error {
-                    message: "impossible de reprendre la session".to_string(),
+                    message: translator.get("error.unable_to_resume_session"),
                 }
             }
         }
