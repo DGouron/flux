@@ -16,6 +16,7 @@ Flux is a CLI tool that helps developers maintain focus by blocking distractions
 - 📊 Status tracking to monitor your focus time
 - ⚡ Lightweight and fast (built with Rust)
 - 🖥️ Cross-platform support (Linux, macOS, Windows)
+- 🔧 Interactive configuration wizard
 
 ## Installation
 
@@ -46,13 +47,19 @@ cargo install --path crates/flux-daemon
 
 ## Usage
 
-### Démarrer le daemon
+### Initial setup
 
 ```bash
-flux-daemon
+flux init
 ```
 
-### Démarrer une session focus
+This interactive wizard configures Flux on first use:
+- Enable/disable system tray icon
+- Default focus duration
+- Check-in interval
+- Notification sounds
+
+### Start a focus session
 
 ```bash
 flux start                    # Défaut: 25 min, mode prompting
@@ -61,26 +68,26 @@ flux start -m review          # Mode review
 flux start -d 30 -m prompting # Combiné
 ```
 
-### Vérifier le statut
+### Check status
 
 ```bash
 flux status          # Affichage formaté
 flux status --json   # Format JSON
 ```
 
-### Arrêter la session
+### Stop session
 
 ```bash
 flux stop
 ```
 
-## Modes de focus
+## Focus modes
 
 | Mode | Description |
 |------|-------------|
-| `prompting` | Travail de prompting et guidage d'agents IA |
-| `review` | Revue de code et validation |
-| `architecture` | Design système et architecture |
+| `prompting` | AI prompting and agent guidance |
+| `review` | Code review and validation |
+| `architecture` | System design and architecture |
 
 ## Architecture
 
