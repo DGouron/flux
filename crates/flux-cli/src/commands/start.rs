@@ -1,4 +1,5 @@
 use crate::client::{ClientError, DaemonClient};
+use crate::daemon_launcher::ensure_daemon_running;
 use anyhow::{bail, Result};
 use flux_protocol::{FocusMode, Request, Response};
 
@@ -13,14 +14,28 @@ pub async fn execute(duration: Option<u64>, mode: Option<String>) -> Result<()> 
 
     let client = DaemonClient::new();
 
-    match client
+    let response = match client
         .send(Request::StartSession {
             duration,
             mode: focus_mode.clone(),
         })
         .await
     {
-        Ok(Response::Ok) => {
+        Ok(response) => response,
+        Err(ClientError::DaemonNotRunning) => {
+            ensure_daemon_running().await?;
+            client
+                .send(Request::StartSession {
+                    duration,
+                    mode: focus_mode.clone(),
+                })
+                .await?
+        }
+        Err(error) => return Err(error.into()),
+    };
+
+    match response {
+        Response::Ok => {
             let duration_display = duration.unwrap_or(25);
             let mode_display = focus_mode
                 .map(format_mode)
@@ -30,22 +45,11 @@ pub async fn execute(duration: Option<u64>, mode: Option<String>) -> Result<()> 
             println!("   Durée: {} min", duration_display);
             println!("   Mode: {}", mode_display);
         }
-        Ok(Response::Error { message }) => {
+        Response::Error { message } => {
             bail!("{}", message);
         }
-        Ok(_) => {
+        _ => {
             bail!("Réponse inattendue du daemon");
-        }
-        Err(ClientError::DaemonNotRunning) => {
-            eprintln!("⚫ Le daemon n'est pas démarré");
-            eprintln!("   Lancez d'abord: flux-daemon");
-            std::process::exit(1);
-        }
-        Err(ClientError::Timeout) => {
-            bail!("Timeout de connexion au daemon");
-        }
-        Err(error) => {
-            bail!("{}", error);
         }
     }
 

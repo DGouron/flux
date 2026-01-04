@@ -1,5 +1,6 @@
 pub mod client;
 mod commands;
+pub mod daemon_launcher;
 
 use clap::{Parser, Subcommand};
 

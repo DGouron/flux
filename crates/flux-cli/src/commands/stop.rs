@@ -20,9 +20,8 @@ pub async fn execute() -> Result<()> {
             bail!("Réponse inattendue du daemon");
         }
         Err(ClientError::DaemonNotRunning) => {
-            eprintln!("⚫ Le daemon n'est pas démarré");
-            eprintln!("   Lancez d'abord: flux-daemon");
-            std::process::exit(1);
+            println!("⚪ Aucune session active");
+            return Ok(());
         }
         Err(ClientError::Timeout) => {
             bail!("Timeout de connexion au daemon");
@@ -32,5 +31,13 @@ pub async fn execute() -> Result<()> {
         }
     }
 
+    shutdown_daemon(&client).await;
+
     Ok(())
+}
+
+async fn shutdown_daemon(client: &DaemonClient) {
+    if let Ok(Response::Ok) = client.send(Request::Shutdown).await {
+        println!("   Daemon arrêté");
+    }
 }

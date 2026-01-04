@@ -28,4 +28,5 @@ dirs = "5.0"
 toml = "0.8"
 notify-rust = "=4.8.0"
 rusqlite = { version = "0.31", features = ["bundled"] }
+which = "7.0"
 flux-core = { path = "crates/flux-core" }

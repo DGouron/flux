@@ -16,14 +16,19 @@ const DEFAULT_CHECK_IN_MINUTES: u64 = 25;
 pub struct Server {
     socket_path: PathBuf,
     timer_handle: TimerHandle,
+    shutdown_sender: tokio::sync::broadcast::Sender<()>,
 }
 
 impl Server {
-    pub fn new(timer_handle: TimerHandle) -> Result<Self> {
+    pub fn new(
+        timer_handle: TimerHandle,
+        shutdown_sender: tokio::sync::broadcast::Sender<()>,
+    ) -> Result<Self> {
         let socket_path = Self::default_socket_path();
         Ok(Self {
             socket_path,
             timer_handle,
+            shutdown_sender,
         })
     }
 
@@ -68,8 +73,9 @@ impl Server {
                     match accept_result {
                         Ok(stream) => {
                             let timer_handle = self.timer_handle.clone();
+                            let shutdown_sender = self.shutdown_sender.clone();
                             tokio::spawn(async move {
-                                if let Err(error) = handle_connection(stream, timer_handle).await {
+                                if let Err(error) = handle_connection(stream, timer_handle, shutdown_sender).await {
                                     error!(%error, "connection handler failed");
                                 }
                             });
@@ -105,7 +111,11 @@ impl Drop for Server {
     }
 }
 
-async fn handle_connection(mut stream: Stream, timer_handle: TimerHandle) -> Result<()> {
+async fn handle_connection(
+    mut stream: Stream,
+    timer_handle: TimerHandle,
+    shutdown_sender: tokio::sync::broadcast::Sender<()>,
+) -> Result<()> {
     debug!("new connection accepted");
 
     let mut length_buffer = [0u8; 4];
@@ -120,7 +130,7 @@ async fn handle_connection(mut stream: Stream, timer_handle: TimerHandle) -> Res
 
     debug!(?request, "received request");
 
-    let response = handle_request(request, &timer_handle).await;
+    let response = handle_request(request, &timer_handle, &shutdown_sender).await;
 
     debug!(?response, "sending response");
 
@@ -134,9 +144,19 @@ async fn handle_connection(mut stream: Stream, timer_handle: TimerHandle) -> Res
     Ok(())
 }
 
-async fn handle_request(request: Request, timer_handle: &TimerHandle) -> Response {
+async fn handle_request(
+    request: Request,
+    timer_handle: &TimerHandle,
+    shutdown_sender: &tokio::sync::broadcast::Sender<()>,
+) -> Response {
     match request {
         Request::Ping => Response::Pong,
+
+        Request::Shutdown => {
+            info!("shutdown request received via IPC");
+            shutdown_sender.send(()).ok();
+            Response::Ok
+        }
 
         Request::GetStatus => {
             if let Some(status) = timer_handle.get_status().await {

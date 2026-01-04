@@ -26,11 +26,12 @@ async fn main() -> Result<()> {
     });
 
     let (shutdown_sender, shutdown_receiver) = broadcast::channel::<()>(1);
+    let sigint_shutdown_sender = shutdown_sender.clone();
 
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
         info!("SIGINT received, initiating shutdown");
-        shutdown_sender.send(()).ok();
+        sigint_shutdown_sender.send(()).ok();
     });
 
     let (notifier_actor, notifier_handle) = NotifierActor::new(
@@ -44,11 +45,11 @@ async fn main() -> Result<()> {
     let (timer_actor, timer_handle) = TimerActor::new(Some(notifier_handle), session_repository);
     tokio::spawn(timer_actor.run());
 
-    let server = Server::new(timer_handle)?;
+    let server = Server::new(timer_handle, shutdown_sender)?;
     server.run(shutdown_receiver).await?;
 
     info!("flux daemon stopped");
-    Ok(())
+    std::process::exit(0);
 }
 
 fn create_session_repository() -> Option<Arc<dyn SessionRepository>> {

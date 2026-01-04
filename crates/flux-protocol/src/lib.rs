@@ -27,6 +27,8 @@ pub enum Request {
     GetStatus,
     /// Ping the daemon to check if it's alive
     Ping,
+    /// Shutdown the daemon gracefully
+    Shutdown,
 }
 
 /// Responses sent from daemon to CLI
@@ -105,6 +107,7 @@ mod tests {
             Request::ResumeSession,
             Request::GetStatus,
             Request::Ping,
+            Request::Shutdown,
         ];
 
         for request in requests {
