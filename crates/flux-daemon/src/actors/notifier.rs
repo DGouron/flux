@@ -1,5 +1,7 @@
 use flux_core::NotificationUrgency;
-use notify_rust::{Hint, Notification, Urgency};
+#[cfg(target_os = "linux")]
+use notify_rust::Hint;
+use notify_rust::{Notification, Urgency};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
@@ -234,11 +236,10 @@ impl NotifierActor {
 
     fn build_notification(&self, summary: &str, body: &str) -> Notification {
         let mut notification = Notification::new();
-        notification
-            .summary(summary)
-            .body(body)
-            .hint(Hint::Urgency(self.urgency))
-            .appname("Flux");
+        notification.summary(summary).body(body).appname("Flux");
+
+        #[cfg(target_os = "linux")]
+        notification.hint(Hint::Urgency(self.urgency));
 
         if self.sound_enabled {
             notification.sound_name("message-new-instant");
