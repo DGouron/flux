@@ -9,7 +9,7 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_API_URL: &str = "https://api.github.com/repos/DGouron/flux/releases/latest";
 const INSTALL_SCRIPT_URL: &str = "https://raw.githubusercontent.com/DGouron/flux/main/install.sh";
 
-pub fn execute(skip_confirmation: bool) -> Result<()> {
+pub async fn execute(skip_confirmation: bool) -> Result<()> {
     println!("Vérification des mises à jour...");
 
     let latest_version = fetch_latest_version()?;
@@ -24,7 +24,7 @@ pub fn execute(skip_confirmation: bool) -> Result<()> {
         return Ok(());
     }
 
-    let daemon_running = is_daemon_running();
+    let daemon_running = is_daemon_running().await;
 
     if daemon_running {
         println!("⚠️  Le daemon Flux est en cours d'exécution.");
@@ -86,11 +86,9 @@ fn fetch_latest_version() -> Result<String> {
         .context("Tag de version introuvable")
 }
 
-fn is_daemon_running() -> bool {
+async fn is_daemon_running() -> bool {
     let client = DaemonClient::new();
-    tokio::runtime::Handle::current()
-        .block_on(async { client.send(flux_protocol::Request::Ping).await })
-        .is_ok()
+    client.send(flux_protocol::Request::Ping).await.is_ok()
 }
 
 fn stop_daemon() -> Result<()> {

@@ -76,7 +76,7 @@ async fn main() {
             let period = commands::Period::from_str(&period).unwrap_or(commands::Period::Week);
             commands::stats(period).await
         }
-        Commands::Update { yes } => commands::update(yes),
+        Commands::Update { yes } => commands::update(yes).await,
     };
 
     if let Err(error) = result {
