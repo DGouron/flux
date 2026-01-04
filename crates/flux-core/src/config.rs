@@ -1,3 +1,4 @@
+use crate::i18n::Language;
 use serde::Deserialize;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -23,11 +24,18 @@ pub enum ConfigError {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct Config {
+    pub general: GeneralConfig,
     pub focus: FocusConfig,
     pub notifications: NotificationConfig,
     pub tray: TrayConfig,
     pub gitlab: Option<ProviderConfig>,
     pub github: Option<ProviderConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneralConfig {
+    pub language: Language,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -113,6 +121,7 @@ mod tests {
     fn default_config_has_sensible_values() {
         let config = Config::default();
 
+        assert_eq!(config.general.language, Language::En);
         assert_eq!(config.focus.default_duration_minutes, 25);
         assert_eq!(config.focus.check_in_interval_minutes, 25);
         assert_eq!(config.focus.check_in_timeout_seconds, 120);
@@ -183,5 +192,29 @@ mod tests {
         let config: Config = toml::from_str(toml).unwrap();
 
         assert!(config.tray.enabled);
+    }
+
+    #[test]
+    fn parse_language_config() {
+        let toml = r#"
+            [general]
+            language = "fr"
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.general.language, Language::Fr);
+    }
+
+    #[test]
+    fn missing_language_defaults_to_english() {
+        let toml = r#"
+            [focus]
+            default_duration_minutes = 25
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.general.language, Language::En);
     }
 }

@@ -1,4 +1,4 @@
-use flux_core::NotificationUrgency;
+use flux_core::{Config, NotificationUrgency, Translator};
 #[cfg(target_os = "linux")]
 use notify_rust::Hint;
 use notify_rust::{Notification, Urgency};
@@ -144,13 +144,21 @@ impl NotifierActor {
         debug!("notifier actor stopped");
     }
 
+    fn get_translator(&self) -> Translator {
+        Config::load()
+            .map(|config| Translator::new(config.general.language))
+            .unwrap_or_default()
+    }
+
     fn send_check_in_notification(&self, session_minutes_elapsed: u64) {
-        let body = format!(
-            "{}min écoulées. Toujours concentré ?",
-            session_minutes_elapsed
+        let translator = self.get_translator();
+        let title = format!("Flux - {}", translator.get("notification.check_in_title"));
+        let body = translator.format(
+            "notification.check_in_body",
+            &[("minutes", &session_minutes_elapsed.to_string())],
         );
 
-        match self.build_notification("Flux - Check-in", &body).show() {
+        match self.build_notification(&title, &body).show() {
             Ok(_) => {
                 debug!(session_minutes_elapsed, "check-in notification sent");
             }
@@ -161,15 +169,17 @@ impl NotifierActor {
     }
 
     fn send_session_start_notification(&self, duration_minutes: u64) {
-        let body = format!(
-            "Session focus de {}min démarrée. Bonne concentration !",
-            duration_minutes
+        let translator = self.get_translator();
+        let title = format!(
+            "Flux - {}",
+            translator.get("notification.session_start_title")
+        );
+        let body = translator.format(
+            "notification.session_start_body",
+            &[("duration", &duration_minutes.to_string())],
         );
 
-        match self
-            .build_notification("Flux - Session démarrée", &body)
-            .show()
-        {
+        match self.build_notification(&title, &body).show() {
             Ok(_) => {
                 debug!(duration_minutes, "session start notification sent");
             }
@@ -180,12 +190,17 @@ impl NotifierActor {
     }
 
     fn send_session_end_notification(&self, total_minutes: u64) {
-        let body = format!("Session de {}min terminée. Bien joué !", total_minutes);
+        let translator = self.get_translator();
+        let title = format!(
+            "Flux - {}",
+            translator.get("notification.session_end_title")
+        );
+        let body = translator.format(
+            "notification.session_end_body",
+            &[("duration", &total_minutes.to_string())],
+        );
 
-        match self
-            .build_notification("Flux - Session terminée", &body)
-            .show()
-        {
+        match self.build_notification(&title, &body).show() {
             Ok(_) => {
                 debug!(total_minutes, "session end notification sent");
             }
@@ -196,10 +211,11 @@ impl NotifierActor {
     }
 
     fn send_session_paused_notification(&self) {
-        match self
-            .build_notification("Flux - Pause", "Session mise en pause")
-            .show()
-        {
+        let translator = self.get_translator();
+        let title = format!("Flux - {}", translator.get("notification.paused_title"));
+        let body = translator.get("notification.paused_body");
+
+        match self.build_notification(&title, &body).show() {
             Ok(_) => {
                 debug!("session paused notification sent");
             }
@@ -210,10 +226,11 @@ impl NotifierActor {
     }
 
     fn send_session_resumed_notification(&self) {
-        match self
-            .build_notification("Flux - Reprise", "Session reprise. Bonne concentration !")
-            .show()
-        {
+        let translator = self.get_translator();
+        let title = format!("Flux - {}", translator.get("notification.resumed_title"));
+        let body = translator.get("notification.resumed_body");
+
+        match self.build_notification(&title, &body).show() {
             Ok(_) => {
                 debug!("session resumed notification sent");
             }

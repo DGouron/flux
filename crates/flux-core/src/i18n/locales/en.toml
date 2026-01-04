@@ -1,0 +1,45 @@
+# English translations for Flux
+
+[init]
+welcome = "Welcome to Flux! Let's configure your focus sessions."
+config_exists = "Configuration already exists: {path}\nUse --force to overwrite."
+overwriting = "⚠️  Overwriting existing configuration."
+prompt_language = "Choose your language"
+prompt_tray = "Enable system tray icon?"
+prompt_duration = "Default focus session duration (minutes)"
+prompt_check_in = "Check-in interval (minutes)"
+prompt_sound = "Enable notification sounds?"
+config_saved = "✅ Configuration saved: {path}"
+next_step = "Run `flux start` to begin your first focus session."
+
+[lang]
+current = "Current language: {name} ({code})"
+set = "Language set: {name}"
+unsupported = "Unsupported language: {lang}. Available: en, fr"
+
+[session]
+started = "Focus session started"
+stopped = "Focus session ended"
+paused = "Session paused"
+resumed = "Session resumed"
+
+[status]
+no_session = "No active session"
+active = "Active session"
+paused = "Session paused"
+
+[notification]
+check_in_title = "Focus Check-in"
+check_in_body = "{minutes}min elapsed. Still focused?"
+session_start_title = "Session Started"
+session_start_body = "{duration}min focus session started. Stay focused!"
+session_end_title = "Session Complete"
+session_end_body = "{duration}min session complete. Great work!"
+paused_title = "Paused"
+paused_body = "Session paused"
+resumed_title = "Resumed"
+resumed_body = "Session resumed. Stay focused!"
+
+[error]
+daemon_not_running = "Daemon is not running"
+config_not_found = "Configuration not found. Run `flux init` first."

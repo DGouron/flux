@@ -1,0 +1,45 @@
+# French translations for Flux
+
+[init]
+welcome = "Bienvenue dans Flux ! Configurons vos sessions focus."
+config_exists = "La configuration existe déjà : {path}\nUtilisez --force pour écraser."
+overwriting = "⚠️  Écrasement de la configuration existante."
+prompt_language = "Choisissez votre langue"
+prompt_tray = "Activer l'icône dans la barre des tâches ?"
+prompt_duration = "Durée par défaut des sessions focus (minutes)"
+prompt_check_in = "Intervalle entre les check-ins (minutes)"
+prompt_sound = "Activer les sons de notification ?"
+config_saved = "✅ Configuration enregistrée : {path}"
+next_step = "Lancez `flux start` pour démarrer votre première session focus."
+
+[lang]
+current = "Langue actuelle : {name} ({code})"
+set = "Langue définie : {name}"
+unsupported = "Langue non supportée : {lang}. Disponibles : en, fr"
+
+[session]
+started = "Session focus démarrée"
+stopped = "Session focus terminée"
+paused = "Session en pause"
+resumed = "Session reprise"
+
+[status]
+no_session = "Aucune session active"
+active = "Session active"
+paused = "Session en pause"
+
+[notification]
+check_in_title = "Check-in Focus"
+check_in_body = "{minutes}min écoulées. Toujours concentré ?"
+session_start_title = "Session démarrée"
+session_start_body = "Session focus de {duration}min démarrée. Bonne concentration !"
+session_end_title = "Session terminée"
+session_end_body = "Session de {duration}min terminée. Bien joué !"
+paused_title = "Pause"
+paused_body = "Session mise en pause"
+resumed_title = "Reprise"
+resumed_body = "Session reprise. Bonne concentration !"
+
+[error]
+daemon_not_running = "Le daemon n'est pas démarré"
+config_not_found = "Configuration introuvable. Lancez `flux init` d'abord."

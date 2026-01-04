@@ -1,4 +1,5 @@
 mod init;
+mod lang;
 mod pause;
 mod resume;
 mod start;
@@ -8,6 +9,7 @@ mod stop;
 mod update;
 
 pub use init::{config_exists, execute as init};
+pub use lang::execute as lang;
 pub use pause::execute as pause;
 pub use resume::execute as resume;
 pub use start::execute as start;
