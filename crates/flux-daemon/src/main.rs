@@ -36,10 +36,7 @@ async fn main() -> Result<()> {
     );
     tokio::spawn(notifier_actor.run());
 
-    let notifier_for_timer = notifier_handle.clone();
-    let (timer_actor, timer_handle) = TimerActor::new(move || {
-        notifier_for_timer.send_check_in(25);
-    });
+    let (timer_actor, timer_handle) = TimerActor::new(Some(notifier_handle));
     tokio::spawn(timer_actor.run());
 
     let server = Server::new(timer_handle)?;

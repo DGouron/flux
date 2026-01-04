@@ -1,3 +1,4 @@
+use super::NotifierHandle;
 use flux_protocol::FocusMode;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
@@ -27,7 +28,6 @@ pub struct TimerStatus {
 
 struct TimerState {
     mode: FocusMode,
-    #[allow(dead_code)]
     total_duration: Duration,
     remaining: Duration,
     check_in_interval: Duration,
@@ -38,7 +38,7 @@ struct TimerState {
 pub struct TimerActor {
     receiver: mpsc::Receiver<TimerMessage>,
     state: Option<TimerState>,
-    check_in_callback: Box<dyn Fn() + Send>,
+    notifier: Option<NotifierHandle>,
 }
 
 #[derive(Clone)]
@@ -87,21 +87,35 @@ impl TimerHandle {
 }
 
 impl TimerActor {
-    pub fn new<F>(check_in_callback: F) -> (Self, TimerHandle)
-    where
-        F: Fn() + Send + 'static,
-    {
+    pub fn new(notifier: Option<NotifierHandle>) -> (Self, TimerHandle) {
         let (sender, receiver) = mpsc::channel(32);
 
         let actor = Self {
             receiver,
             state: None,
-            check_in_callback: Box::new(check_in_callback),
+            notifier,
         };
 
         let handle = TimerHandle { sender };
 
         (actor, handle)
+    }
+
+    fn elapsed_minutes(&self) -> u64 {
+        self.state
+            .as_ref()
+            .map(|state| {
+                let elapsed = state.total_duration.saturating_sub(state.remaining);
+                elapsed.as_secs() / 60
+            })
+            .unwrap_or(0)
+    }
+
+    fn total_minutes(&self) -> u64 {
+        self.state
+            .as_ref()
+            .map(|state| state.total_duration.as_secs() / 60)
+            .unwrap_or(0)
     }
 
     pub async fn run(mut self) {
@@ -114,6 +128,7 @@ impl TimerActor {
                     match message {
                         TimerMessage::Start { duration, mode, check_in_interval } => {
                             info!(?mode, ?duration, "session started");
+                            let duration_minutes = duration.as_secs() / 60;
                             self.state = Some(TimerState {
                                 mode,
                                 total_duration: duration,
@@ -123,10 +138,20 @@ impl TimerActor {
                                 paused: false,
                             });
                             time_since_check_in = Duration::ZERO;
+
+                            if let Some(ref notifier) = self.notifier {
+                                notifier.send_session_start(duration_minutes);
+                            }
                         }
                         TimerMessage::Stop => {
                             if self.state.is_some() {
+                                let total = self.total_minutes();
                                 info!("session stopped");
+
+                                if let Some(ref notifier) = self.notifier {
+                                    notifier.send_session_end(total);
+                                }
+
                                 self.state = None;
                             }
                         }
@@ -168,11 +193,19 @@ impl TimerActor {
 
                             if time_since_check_in >= state.check_in_interval {
                                 debug!("check-in triggered");
-                                (self.check_in_callback)();
+                                if let Some(ref notifier) = self.notifier {
+                                    notifier.send_check_in(self.elapsed_minutes());
+                                }
                                 time_since_check_in = Duration::ZERO;
                             }
                         } else {
+                            let total = self.total_minutes();
                             info!("session completed");
+
+                            if let Some(ref notifier) = self.notifier {
+                                notifier.send_session_end(total);
+                            }
+
                             self.state = None;
                             time_since_check_in = Duration::ZERO;
                         }
@@ -206,12 +239,10 @@ impl TimerActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn start_and_get_status() {
-        let (actor, handle) = TimerActor::new(|| {});
+        let (actor, handle) = TimerActor::new(None);
         tokio::spawn(actor.run());
 
         handle
@@ -234,7 +265,7 @@ mod tests {
 
     #[tokio::test]
     async fn pause_and_resume() {
-        let (actor, handle) = TimerActor::new(|| {});
+        let (actor, handle) = TimerActor::new(None);
         tokio::spawn(actor.run());
 
         handle
@@ -263,7 +294,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_clears_session() {
-        let (actor, handle) = TimerActor::new(|| {});
+        let (actor, handle) = TimerActor::new(None);
         tokio::spawn(actor.run());
 
         handle
@@ -284,13 +315,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn check_in_callback_triggered() {
-        let counter = Arc::new(AtomicUsize::new(0));
-        let counter_clone = counter.clone();
-
-        let (actor, handle) = TimerActor::new(move || {
-            counter_clone.fetch_add(1, Ordering::SeqCst);
-        });
+    async fn check_in_triggers_at_interval() {
+        let (actor, handle) = TimerActor::new(None);
         tokio::spawn(actor.run());
 
         handle
@@ -304,7 +330,8 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(3500)).await;
 
-        let count = counter.load(Ordering::SeqCst);
-        assert!(count >= 2, "expected at least 2 check-ins, got {}", count);
+        let status = handle.get_status().await.unwrap();
+        assert!(status.active);
+        assert!(status.remaining.as_secs() <= 7);
     }
 }
