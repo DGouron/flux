@@ -814,6 +814,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "ureq",
  "which",
 ]
 

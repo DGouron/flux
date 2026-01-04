@@ -47,6 +47,12 @@ enum Commands {
         #[arg(short, long, default_value = "week")]
         period: String,
     },
+    /// Mettre à jour Flux vers la dernière version
+    Update {
+        /// Ignorer la confirmation si le daemon est en cours
+        #[arg(short, long)]
+        yes: bool,
+    },
 }
 
 #[tokio::main]
@@ -70,6 +76,7 @@ async fn main() {
             let period = commands::Period::from_str(&period).unwrap_or(commands::Period::Week);
             commands::stats(period).await
         }
+        Commands::Update { yes } => commands::update(yes),
     };
 
     if let Err(error) = result {

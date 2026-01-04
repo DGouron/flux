@@ -5,6 +5,7 @@ mod start;
 mod stats;
 mod status;
 mod stop;
+mod update;
 
 pub use init::{config_exists, execute as init};
 pub use pause::execute as pause;
@@ -13,3 +14,4 @@ pub use start::execute as start;
 pub use stats::{execute as stats, Period};
 pub use status::execute as status;
 pub use stop::execute as stop;
+pub use update::execute as update;
