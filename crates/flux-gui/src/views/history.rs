@@ -1,21 +1,27 @@
 use chrono::{DateTime, Local, Utc};
 use eframe::egui::{self, Rounding, ScrollArea, Ui};
-use flux_core::{Session, Translator};
+use flux_core::{Session, SessionId, Translator};
 
 use crate::data::format_duration;
 use crate::theme::Theme;
+
+pub enum HistoryAction {
+    None,
+    DeleteSession(SessionId),
+}
 
 pub fn render_session_list(
     ui: &mut Ui,
     sessions: &[&Session],
     translator: &Translator,
     theme: &Theme,
-) {
+) -> HistoryAction {
     if sessions.is_empty() {
         render_empty_state(ui, translator, theme);
-        return;
+        return HistoryAction::None;
     }
 
+    let mut action = HistoryAction::None;
     let mut sorted_sessions: Vec<_> = sessions.iter().collect();
     sorted_sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at));
 
@@ -25,13 +31,19 @@ pub fn render_session_list(
             ui.set_min_width(ui.available_width());
 
             for session in sorted_sessions {
-                render_session_row(ui, session, theme);
+                if let Some(id) = render_session_row(ui, session, theme) {
+                    action = HistoryAction::DeleteSession(id);
+                }
                 ui.add_space(theme.spacing.sm);
             }
         });
+
+    action
 }
 
-fn render_session_row(ui: &mut Ui, session: &Session, theme: &Theme) {
+fn render_session_row(ui: &mut Ui, session: &Session, theme: &Theme) -> Option<SessionId> {
+    let mut delete_clicked = false;
+
     let frame = egui::Frame::none()
         .fill(theme.colors.surface)
         .stroke(egui::Stroke::new(1.0, theme.colors.border))
@@ -62,6 +74,24 @@ fn render_session_row(ui: &mut Ui, session: &Session, theme: &Theme) {
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let delete_button = egui::Button::new(
+                            egui::RichText::new("🗑")
+                                .size(theme.typography.body)
+                                .color(theme.colors.text_muted),
+                        )
+                        .fill(egui::Color32::TRANSPARENT)
+                        .stroke(egui::Stroke::NONE);
+
+                        if ui
+                            .add(delete_button)
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .clicked()
+                        {
+                            delete_clicked = true;
+                        }
+
+                        ui.add_space(theme.spacing.sm);
+
                         ui.label(
                             egui::RichText::new(format_datetime(session.started_at))
                                 .size(theme.typography.label)
@@ -92,6 +122,12 @@ fn render_session_row(ui: &mut Ui, session: &Session, theme: &Theme) {
             });
         });
     });
+
+    if delete_clicked {
+        session.id
+    } else {
+        None
+    }
 }
 
 fn render_session_stat(ui: &mut Ui, theme: &Theme, icon: &str, value: &str) {

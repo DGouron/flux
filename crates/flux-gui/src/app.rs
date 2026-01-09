@@ -17,6 +17,7 @@ pub struct FluxApp {
     current_view: View,
     theme: Theme,
     theme_applied: bool,
+    show_clear_modal: bool,
 }
 
 impl FluxApp {
@@ -30,6 +31,7 @@ impl FluxApp {
             current_view: View::Overview,
             theme: Theme::dark(),
             theme_applied: false,
+            show_clear_modal: false,
         }
     }
 
@@ -89,6 +91,8 @@ impl eframe::App for FluxApp {
                         View::History => self.render_history(ui),
                     });
             });
+
+        self.render_clear_modal(ctx);
     }
 }
 
@@ -168,8 +172,95 @@ impl FluxApp {
         }
     }
 
-    fn render_history(&self, ui: &mut egui::Ui) {
+    fn render_history(&mut self, ui: &mut egui::Ui) {
         let sessions = self.data.sessions_for_period(self.selected_period);
-        views::history::render_session_list(ui, &sessions, &self.data.translator, &self.theme);
+        let session_count = sessions.len();
+
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let clear_button = egui::Button::new(
+                    egui::RichText::new(self.data.translator.get("gui.clear_all"))
+                        .size(self.theme.typography.label)
+                        .color(self.theme.colors.error),
+                )
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(1.0, self.theme.colors.error))
+                .rounding(Rounding::same(self.theme.rounding.sm));
+
+                if session_count > 0 && ui.add(clear_button).clicked() {
+                    self.show_clear_modal = true;
+                }
+            });
+        });
+
+        ui.add_space(self.theme.spacing.md);
+
+        let action =
+            views::history::render_session_list(ui, &sessions, &self.data.translator, &self.theme);
+
+        if let views::history::HistoryAction::DeleteSession(id) = action {
+            if self.data.delete_session(id).is_ok() {
+                self.update_stats();
+            }
+        }
+    }
+
+    fn render_clear_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_clear_modal {
+            return;
+        }
+
+        let session_count = self.data.sessions.len();
+
+        egui::Window::new(self.data.translator.get("gui.clear_confirm_title"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.add_space(self.theme.spacing.md);
+
+                let message = self
+                    .data
+                    .translator
+                    .get("gui.clear_confirm_message")
+                    .replace("{count}", &session_count.to_string());
+
+                ui.label(
+                    egui::RichText::new(message)
+                        .size(self.theme.typography.body)
+                        .color(self.theme.colors.text_primary),
+                );
+
+                ui.add_space(self.theme.spacing.lg);
+
+                ui.horizontal(|ui| {
+                    let cancel_button = egui::Button::new(
+                        egui::RichText::new(self.data.translator.get("gui.clear_cancel"))
+                            .size(self.theme.typography.body),
+                    )
+                    .rounding(Rounding::same(self.theme.rounding.sm));
+
+                    if ui.add(cancel_button).clicked() {
+                        self.show_clear_modal = false;
+                    }
+
+                    ui.add_space(self.theme.spacing.md);
+
+                    let confirm_button = egui::Button::new(
+                        egui::RichText::new(self.data.translator.get("gui.clear_confirm"))
+                            .size(self.theme.typography.body)
+                            .color(egui::Color32::WHITE),
+                    )
+                    .fill(self.theme.colors.error)
+                    .rounding(Rounding::same(self.theme.rounding.sm));
+
+                    if ui.add(confirm_button).clicked() {
+                        if self.data.clear_sessions().is_ok() {
+                            self.update_stats();
+                        }
+                        self.show_clear_modal = false;
+                    }
+                });
+            });
     }
 }
