@@ -4,7 +4,7 @@ mod server;
 use std::sync::Arc;
 
 #[cfg(target_os = "linux")]
-use actors::{check_for_updates, open_configuration, spawn_tray, TrayAction};
+use actors::{check_for_updates, open_configuration, open_dashboard, spawn_tray, TrayAction};
 use actors::{NotifierActor, TimerActor};
 use anyhow::Result;
 use flux_adapters::SqliteSessionRepository;
@@ -96,6 +96,9 @@ async fn main() -> Result<()> {
                         runtime_handle.spawn(async move {
                             let _ = handle.stop().await;
                         });
+                    }
+                    TrayAction::OpenDashboard => {
+                        open_dashboard();
                     }
                     TrayAction::CheckForUpdates => {
                         check_for_updates();

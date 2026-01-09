@@ -1,3 +1,4 @@
+mod dashboard;
 mod init;
 mod lang;
 mod pause;
@@ -8,6 +9,7 @@ mod status;
 mod stop;
 mod update;
 
+pub use dashboard::execute as dashboard;
 pub use init::{config_exists, execute as init};
 pub use lang::execute as lang;
 pub use pause::execute as pause;

@@ -59,6 +59,9 @@ stats_average_duration = "Durée moyenne"
 stats_check_ins = "Check-ins"
 stats_no_sessions = "Aucune session pour cette période"
 
+# Dashboard command
+dashboard_launched = "📊 Dashboard ouvert"
+
 [session]
 started = "Session focus démarrée"
 stopped = "Session focus terminée"
@@ -82,6 +85,12 @@ paused_body = "Session mise en pause"
 resumed_title = "Reprise"
 resumed_body = "Session reprise. Bonne concentration !"
 
+[gui]
+tab_overview = "Vue d'ensemble"
+tab_history = "Historique"
+history_empty = "Aucune session pour cette période"
+chart_title = "Focus quotidien"
+
 [error]
 daemon_not_running = "⚫ Le daemon n'est pas démarré"
 daemon_not_running_hint = "   Lancez d'abord : flux start"
@@ -95,3 +104,5 @@ unable_to_pause_session = "Impossible de mettre en pause"
 unable_to_resume_session = "Impossible de reprendre la session"
 persistence_error_title = "Flux - Erreur"
 persistence_error_body = "Impossible de sauvegarder la session. Les données pourraient être perdues."
+dashboard_not_found = "flux-gui introuvable. Installez-le ou ajoutez-le à votre PATH."
+dashboard_spawn_failed = "Impossible de lancer le dashboard"

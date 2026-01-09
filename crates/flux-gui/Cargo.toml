@@ -1,0 +1,24 @@
+[package]
+name = "flux-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "flux-gui"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.30"
+egui_extras = { version = "0.30", features = ["datepicker"] }
+egui_plot = "0.30"
+
+flux-core = { path = "../flux-core" }
+flux-adapters = { path = "../flux-adapters" }
+
+chrono = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dirs = { workspace = true }

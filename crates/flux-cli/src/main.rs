@@ -59,6 +59,8 @@ enum Commands {
         /// Language code to set (en, fr). Without argument: displays current language.
         language: Option<String>,
     },
+    /// Ouvrir le dashboard graphique
+    Dashboard,
 }
 
 #[tokio::main]
@@ -84,6 +86,7 @@ async fn main() {
         }
         Commands::Update { yes } => commands::update(yes).await,
         Commands::Lang { language } => commands::lang(language),
+        Commands::Dashboard => commands::dashboard(),
     };
 
     if let Err(error) = result {

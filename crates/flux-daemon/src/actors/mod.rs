@@ -6,4 +6,6 @@ mod tray;
 pub use notifier::{NotifierActor, NotifierHandle};
 pub use timer::{TimerActor, TimerHandle};
 #[cfg(target_os = "linux")]
-pub use tray::{check_for_updates, open_configuration, spawn_tray, TrayAction, TrayStateHandle};
+pub use tray::{
+    check_for_updates, open_configuration, open_dashboard, spawn_tray, TrayAction, TrayStateHandle,
+};

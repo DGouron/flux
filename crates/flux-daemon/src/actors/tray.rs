@@ -12,6 +12,7 @@ pub enum TrayAction {
     Pause,
     Resume,
     Stop,
+    OpenDashboard,
     CheckForUpdates,
     OpenConfiguration,
     Quit,
@@ -185,6 +186,16 @@ impl ksni::Tray for FluxTray {
         if !items.is_empty() {
             items.push(MenuItem::Separator);
         }
+
+        items.push(MenuItem::Standard(StandardItem {
+            label: "Dashboard".to_string(),
+            activate: Box::new(|tray: &mut Self| {
+                let _ = tray.action_sender.send(TrayAction::OpenDashboard);
+            }),
+            ..Default::default()
+        }));
+
+        items.push(MenuItem::Separator);
 
         items.push(MenuItem::Standard(StandardItem {
             label: "Check for updates".to_string(),
@@ -368,6 +379,27 @@ pub fn check_for_updates() {
     }
 
     warn!("no suitable terminal emulator found for update");
+}
+
+pub fn open_dashboard() {
+    if let Ok(gui_path) = which::which("flux-gui") {
+        if let Err(error) = Command::new(gui_path).spawn() {
+            warn!(%error, "failed to spawn flux-gui");
+        }
+        return;
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        let sibling_path = current_exe.with_file_name("flux-gui");
+        if sibling_path.exists() {
+            if let Err(error) = Command::new(sibling_path).spawn() {
+                warn!(%error, "failed to spawn flux-gui");
+            }
+            return;
+        }
+    }
+
+    warn!("flux-gui not found in PATH or alongside daemon binary");
 }
 
 #[cfg(test)]
