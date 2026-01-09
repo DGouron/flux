@@ -61,6 +61,12 @@ enum Commands {
     },
     /// Ouvrir le dashboard graphique
     Dashboard,
+    /// Supprimer toutes les sessions terminées
+    Clear {
+        /// Confirmer automatiquement (pas de prompt)
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }
 
 #[tokio::main]
@@ -87,6 +93,7 @@ async fn main() {
         Commands::Update { yes } => commands::update(yes).await,
         Commands::Lang { language } => commands::lang(language),
         Commands::Dashboard => commands::dashboard(),
+        Commands::Clear { yes } => commands::clear(yes).await,
     };
 
     if let Err(error) = result {

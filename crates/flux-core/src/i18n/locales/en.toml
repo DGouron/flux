@@ -62,6 +62,13 @@ stats_no_sessions = "No sessions for this period"
 # Dashboard command
 dashboard_launched = "📊 Dashboard opened"
 
+# Clear command
+clear_confirm = "Delete {count} sessions? This action is irreversible. [y/N]"
+clear_success = "🗑️  {count} sessions deleted"
+clear_success_with_active = "🗑️  {count} sessions deleted (1 active session preserved)"
+clear_cancelled = "Operation cancelled"
+clear_empty = "No sessions to delete"
+
 [session]
 started = "Focus session started"
 stopped = "Focus session ended"

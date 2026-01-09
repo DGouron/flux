@@ -25,4 +25,10 @@ pub trait SessionRepository: Send + Sync {
         &self,
         since: DateTime<Utc>,
     ) -> Result<Vec<Session>, SessionRepositoryError>;
+
+    fn count_completed_sessions(&self) -> Result<u32, SessionRepositoryError>;
+
+    fn clear_completed_sessions(&self) -> Result<u32, SessionRepositoryError>;
+
+    fn has_active_session(&self) -> Result<bool, SessionRepositoryError>;
 }

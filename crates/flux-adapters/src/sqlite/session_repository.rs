@@ -179,6 +179,38 @@ impl SessionRepository for SqliteSessionRepository {
 
         Ok(sessions)
     }
+
+    fn count_completed_sessions(&self) -> Result<u32, SessionRepositoryError> {
+        let connection = self.connection.lock().unwrap();
+
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE ended_at IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
+
+        Ok(count as u32)
+    }
+
+    fn clear_completed_sessions(&self) -> Result<u32, SessionRepositoryError> {
+        let connection = self.connection.lock().unwrap();
+
+        let deleted = connection
+            .execute("DELETE FROM sessions WHERE ended_at IS NOT NULL", [])
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
+
+        Ok(deleted as u32)
+    }
+
+    fn has_active_session(&self) -> Result<bool, SessionRepositoryError> {
+        self.find_active().map(|session| session.is_some())
+    }
 }
 
 fn row_to_session(row: &rusqlite::Row) -> Session {
@@ -327,5 +359,75 @@ mod tests {
 
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].mode, FocusMode::Prompting);
+    }
+
+    #[test]
+    fn count_completed_sessions_returns_correct_count() {
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session1 = Session::start(FocusMode::Prompting);
+        session1.end();
+        repository.save(&mut session1).unwrap();
+
+        let mut session2 = Session::start(FocusMode::Review);
+        session2.end();
+        repository.save(&mut session2).unwrap();
+
+        let mut active = Session::start(FocusMode::Architecture);
+        repository.save(&mut active).unwrap();
+
+        let count = repository.count_completed_sessions().unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn clear_completed_sessions_removes_only_terminated() {
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session1 = Session::start(FocusMode::Prompting);
+        session1.end();
+        repository.save(&mut session1).unwrap();
+
+        let mut session2 = Session::start(FocusMode::Review);
+        session2.end();
+        repository.save(&mut session2).unwrap();
+
+        let mut session3 = Session::start(FocusMode::Architecture);
+        session3.end();
+        repository.save(&mut session3).unwrap();
+
+        let mut active = Session::start(FocusMode::Prompting);
+        repository.save(&mut active).unwrap();
+
+        let deleted = repository.clear_completed_sessions().unwrap();
+        assert_eq!(deleted, 3);
+
+        let remaining_active = repository.find_active().unwrap();
+        assert!(remaining_active.is_some());
+        assert_eq!(remaining_active.unwrap().id, active.id);
+
+        let count = repository.count_completed_sessions().unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn has_active_session_returns_true_when_active() {
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session = Session::start(FocusMode::Prompting);
+        repository.save(&mut session).unwrap();
+
+        assert!(repository.has_active_session().unwrap());
+    }
+
+    #[test]
+    fn has_active_session_returns_false_when_none() {
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session = Session::start(FocusMode::Prompting);
+        session.end();
+        repository.save(&mut session).unwrap();
+
+        assert!(!repository.has_active_session().unwrap());
     }
 }

@@ -1,3 +1,4 @@
+mod clear;
 mod dashboard;
 mod init;
 mod lang;
@@ -9,6 +10,7 @@ mod status;
 mod stop;
 mod update;
 
+pub use clear::execute as clear;
 pub use dashboard::execute as dashboard;
 pub use init::{config_exists, execute as init};
 pub use lang::execute as lang;
