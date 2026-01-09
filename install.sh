@@ -73,7 +73,8 @@ main() {
     mkdir -p "$INSTALL_DIR"
     mv "$tmpdir/flux" "$INSTALL_DIR/"
     mv "$tmpdir/flux-daemon" "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/flux" "$INSTALL_DIR/flux-daemon"
+    mv "$tmpdir/flux-gui" "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/flux" "$INSTALL_DIR/flux-daemon" "$INSTALL_DIR/flux-gui"
 
     echo ""
     echo "✅ Flux installé dans $INSTALL_DIR"

@@ -101,11 +101,12 @@ fn stop_daemon() -> Result<()> {
     Ok(())
 }
 
-fn get_binary_paths() -> Result<(PathBuf, PathBuf)> {
+fn get_binary_paths() -> Result<(PathBuf, PathBuf, Option<PathBuf>)> {
     let flux_path = which::which("flux").context("Binaire flux introuvable dans le PATH")?;
     let daemon_path =
         which::which("flux-daemon").context("Binaire flux-daemon introuvable dans le PATH")?;
-    Ok((flux_path, daemon_path))
+    let gui_path = which::which("flux-gui").ok();
+    Ok((flux_path, daemon_path, gui_path))
 }
 
 fn create_backup() -> Result<PathBuf> {
@@ -117,11 +118,15 @@ fn create_backup() -> Result<PathBuf> {
     let backup_dir = PathBuf::from(format!("/tmp/flux-backup-{}", timestamp));
     fs::create_dir_all(&backup_dir).context("Impossible de créer le répertoire de sauvegarde")?;
 
-    let (flux_path, daemon_path) = get_binary_paths()?;
+    let (flux_path, daemon_path, gui_path) = get_binary_paths()?;
 
     fs::copy(&flux_path, backup_dir.join("flux")).context("Impossible de sauvegarder flux")?;
     fs::copy(&daemon_path, backup_dir.join("flux-daemon"))
         .context("Impossible de sauvegarder flux-daemon")?;
+    if let Some(gui) = gui_path {
+        fs::copy(&gui, backup_dir.join("flux-gui"))
+            .context("Impossible de sauvegarder flux-gui")?;
+    }
 
     Ok(backup_dir)
 }
@@ -149,11 +154,17 @@ fn verify_installation() -> Result<bool> {
 }
 
 fn restore_backup(backup_dir: &PathBuf) -> Result<()> {
-    let (flux_path, daemon_path) = get_binary_paths()?;
+    let (flux_path, daemon_path, gui_path) = get_binary_paths()?;
 
     fs::copy(backup_dir.join("flux"), &flux_path).context("Impossible de restaurer flux")?;
     fs::copy(backup_dir.join("flux-daemon"), &daemon_path)
         .context("Impossible de restaurer flux-daemon")?;
+    if let Some(gui) = gui_path {
+        let backup_gui = backup_dir.join("flux-gui");
+        if backup_gui.exists() {
+            fs::copy(&backup_gui, &gui).context("Impossible de restaurer flux-gui")?;
+        }
+    }
 
     cleanup_backup(backup_dir);
     Ok(())
