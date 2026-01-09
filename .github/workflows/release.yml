@@ -46,7 +46,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p flux-cli -p flux-daemon
+        run: cargo build --release --target ${{ matrix.target }} -p flux-cli -p flux-daemon -p flux-gui
 
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'
@@ -54,6 +54,7 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/flux dist/
           cp target/${{ matrix.target }}/release/flux-daemon dist/
+          cp target/${{ matrix.target }}/release/flux-gui dist/
           cd dist
           tar -czvf ../flux-${{ github.ref_name }}-${{ matrix.target }}.tar.gz *
 
@@ -63,6 +64,7 @@ jobs:
           mkdir dist
           cp target/${{ matrix.target }}/release/flux.exe dist/
           cp target/${{ matrix.target }}/release/flux-daemon.exe dist/
+          cp target/${{ matrix.target }}/release/flux-gui.exe dist/
           Compress-Archive -Path dist/* -DestinationPath flux-${{ github.ref_name }}-${{ matrix.target }}.zip
 
       - name: Upload artifact
