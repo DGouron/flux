@@ -8,6 +8,9 @@ pub enum SessionRepositoryError {
     #[error("session introuvable: {id}")]
     NotFound { id: SessionId },
 
+    #[error("impossible de supprimer une session active: {id}")]
+    ActiveSession { id: SessionId },
+
     #[error("erreur de persistence: {message}")]
     Storage { message: String },
 }
@@ -31,4 +34,6 @@ pub trait SessionRepository: Send + Sync {
     fn clear_completed_sessions(&self) -> Result<u32, SessionRepositoryError>;
 
     fn has_active_session(&self) -> Result<bool, SessionRepositoryError>;
+
+    fn delete_session(&self, id: SessionId) -> Result<(), SessionRepositoryError>;
 }

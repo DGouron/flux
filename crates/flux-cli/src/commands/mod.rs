@@ -1,5 +1,6 @@
 mod clear;
 mod dashboard;
+mod delete;
 mod init;
 mod lang;
 mod pause;
@@ -12,6 +13,7 @@ mod update;
 
 pub use clear::execute as clear;
 pub use dashboard::execute as dashboard;
+pub use delete::execute as delete;
 pub use init::{config_exists, execute as init};
 pub use lang::execute as lang;
 pub use pause::execute as pause;

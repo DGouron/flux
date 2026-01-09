@@ -211,6 +211,24 @@ impl SessionRepository for SqliteSessionRepository {
     fn has_active_session(&self) -> Result<bool, SessionRepositoryError> {
         self.find_active().map(|session| session.is_some())
     }
+
+    fn delete_session(&self, id: SessionId) -> Result<(), SessionRepositoryError> {
+        let session = self.find_by_id(id)?;
+
+        if session.is_active() {
+            return Err(SessionRepositoryError::ActiveSession { id });
+        }
+
+        let connection = self.connection.lock().unwrap();
+
+        connection
+            .execute("DELETE FROM sessions WHERE id = ?1", params![id])
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
+
+        Ok(())
+    }
 }
 
 fn row_to_session(row: &rusqlite::Row) -> Session {
@@ -429,5 +447,53 @@ mod tests {
         repository.save(&mut session).unwrap();
 
         assert!(!repository.has_active_session().unwrap());
+    }
+
+    #[test]
+    fn delete_session_removes_completed_session() {
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session = Session::start(FocusMode::Prompting);
+        session.end();
+        repository.save(&mut session).unwrap();
+
+        let id = session.id.unwrap();
+        repository.delete_session(id).unwrap();
+
+        let result = repository.find_by_id(id);
+        assert!(matches!(
+            result,
+            Err(SessionRepositoryError::NotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn delete_session_fails_on_active_session() {
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session = Session::start(FocusMode::Review);
+        repository.save(&mut session).unwrap();
+
+        let id = session.id.unwrap();
+        let result = repository.delete_session(id);
+
+        assert!(matches!(
+            result,
+            Err(SessionRepositoryError::ActiveSession { .. })
+        ));
+
+        let retrieved = repository.find_by_id(id).unwrap();
+        assert!(retrieved.is_active());
+    }
+
+    #[test]
+    fn delete_session_fails_on_nonexistent_session() {
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let result = repository.delete_session(999);
+        assert!(matches!(
+            result,
+            Err(SessionRepositoryError::NotFound { id: 999 })
+        ));
     }
 }

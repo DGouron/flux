@@ -67,6 +67,11 @@ enum Commands {
         #[arg(short = 'y', long)]
         yes: bool,
     },
+    /// Supprimer une session spécifique
+    Delete {
+        /// Identifiant de la session à supprimer
+        id: i64,
+    },
 }
 
 #[tokio::main]
@@ -94,6 +99,7 @@ async fn main() {
         Commands::Lang { language } => commands::lang(language),
         Commands::Dashboard => commands::dashboard(),
         Commands::Clear { yes } => commands::clear(yes).await,
+        Commands::Delete { id } => commands::delete(id).await,
     };
 
     if let Err(error) = result {

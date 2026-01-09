@@ -69,6 +69,11 @@ clear_success_with_active = "🗑️  {count} sessions deleted (1 active session
 clear_cancelled = "Operation cancelled"
 clear_empty = "No sessions to delete"
 
+# Delete command
+delete_success = "🗑️  Session {id} deleted"
+delete_not_found = "Session {id} not found"
+delete_active_session = "Cannot delete an active session. Use 'flux stop' first."
+
 [session]
 started = "Focus session started"
 stopped = "Focus session ended"
@@ -97,6 +102,12 @@ tab_overview = "Overview"
 tab_history = "History"
 history_empty = "No sessions for this period"
 chart_title = "Daily Focus"
+start_session = "Start a session"
+session_active = "Session active"
+remaining_time = "Remaining time"
+start_hint = "Start your first focus session"
+starting = "Starting..."
+daemon_error = "Cannot contact daemon"
 
 [error]
 daemon_not_running = "⚫ Daemon is not running"

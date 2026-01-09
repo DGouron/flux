@@ -69,6 +69,11 @@ clear_success_with_active = "🗑️  {count} sessions supprimées (1 session en
 clear_cancelled = "Opération annulée"
 clear_empty = "Aucune session à supprimer"
 
+# Delete command
+delete_success = "🗑️  Session {id} supprimée"
+delete_not_found = "Session {id} introuvable"
+delete_active_session = "Impossible de supprimer une session en cours. Utilisez 'flux stop' d'abord."
+
 [session]
 started = "Session focus démarrée"
 stopped = "Session focus terminée"
@@ -97,6 +102,12 @@ tab_overview = "Vue d'ensemble"
 tab_history = "Historique"
 history_empty = "Aucune session pour cette période"
 chart_title = "Focus quotidien"
+start_session = "Démarrer une session"
+session_active = "Session en cours"
+remaining_time = "Temps restant"
+start_hint = "Démarrez votre première session focus"
+starting = "Démarrage..."
+daemon_error = "Impossible de contacter le daemon"
 
 [error]
 daemon_not_running = "⚫ Le daemon n'est pas démarré"
