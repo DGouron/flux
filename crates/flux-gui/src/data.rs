@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
 use flux_adapters::SqliteSessionRepository;
-use flux_core::{Config, Session, SessionRepository, Translator};
+use flux_core::{Config, Session, SessionId, SessionRepository, Translator};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Period {
@@ -47,6 +48,7 @@ pub struct DailyFocus {
 pub struct StatsData {
     pub translator: Translator,
     pub sessions: Vec<Session>,
+    database_path: Option<PathBuf>,
 }
 
 impl StatsData {
@@ -94,15 +96,50 @@ impl StatsData {
     pub fn has_sessions(&self) -> bool {
         !self.sessions.is_empty()
     }
+
+    pub fn delete_session(&mut self, id: SessionId) -> Result<()> {
+        let database_path = self
+            .database_path
+            .as_ref()
+            .context("database path not configured")?;
+
+        let repository = SqliteSessionRepository::new(database_path)
+            .map_err(|error| anyhow::anyhow!("database access error: {}", error))?;
+
+        repository
+            .delete_session(id)
+            .map_err(|error| anyhow::anyhow!("delete error: {}", error))?;
+
+        self.sessions.retain(|session| session.id != Some(id));
+        Ok(())
+    }
+
+    pub fn clear_sessions(&mut self) -> Result<u32> {
+        let database_path = self
+            .database_path
+            .as_ref()
+            .context("database path not configured")?;
+
+        let repository = SqliteSessionRepository::new(database_path)
+            .map_err(|error| anyhow::anyhow!("database access error: {}", error))?;
+
+        let count = repository
+            .clear_completed_sessions()
+            .map_err(|error| anyhow::anyhow!("clear error: {}", error))?;
+
+        self.sessions.clear();
+        Ok(count)
+    }
 }
 
 pub fn load_initial_data() -> Result<StatsData> {
     let translator = get_translator();
-    let sessions = load_all_sessions()?;
+    let (sessions, database_path) = load_all_sessions()?;
 
     Ok(StatsData {
         translator,
         sessions,
+        database_path,
     })
 }
 
@@ -112,7 +149,7 @@ fn get_translator() -> Translator {
         .unwrap_or_default()
 }
 
-fn load_all_sessions() -> Result<Vec<Session>> {
+fn load_all_sessions() -> Result<(Vec<Session>, Option<PathBuf>)> {
     let data_dir = dirs::data_dir()
         .context("cannot find data directory")?
         .join("flux");
@@ -120,7 +157,7 @@ fn load_all_sessions() -> Result<Vec<Session>> {
     let database_path = data_dir.join("sessions.db");
 
     if !database_path.exists() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), None));
     }
 
     let repository = SqliteSessionRepository::new(&database_path)
@@ -128,9 +165,11 @@ fn load_all_sessions() -> Result<Vec<Session>> {
 
     let since = Utc::now() - Duration::days(365);
 
-    repository
+    let sessions = repository
         .find_completed_since(since)
-        .map_err(|error| anyhow::anyhow!("read error: {}", error))
+        .map_err(|error| anyhow::anyhow!("read error: {}", error))?;
+
+    Ok((sessions, Some(database_path)))
 }
 
 fn period_start(period: Period) -> DateTime<Utc> {

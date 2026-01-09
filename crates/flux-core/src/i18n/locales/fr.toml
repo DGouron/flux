@@ -108,6 +108,11 @@ remaining_time = "Temps restant"
 start_hint = "Démarrez votre première session focus"
 starting = "Démarrage..."
 daemon_error = "Impossible de contacter le daemon"
+clear_all = "Effacer tout"
+clear_confirm_title = "Confirmation"
+clear_confirm_message = "Supprimer {count} sessions ? Cette action est irréversible."
+clear_cancel = "Annuler"
+clear_confirm = "Confirmer"
 
 [error]
 daemon_not_running = "⚫ Le daemon n'est pas démarré"
