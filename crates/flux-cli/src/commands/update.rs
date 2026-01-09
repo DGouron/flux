@@ -24,14 +24,26 @@ pub async fn execute(skip_confirmation: bool) -> Result<()> {
         return Ok(());
     }
 
-    let daemon_running = is_daemon_running().await;
+    let daemon_was_running = is_daemon_running().await;
+    let gui_was_running = is_gui_running();
 
-    if daemon_running {
-        println!("⚠️  Le daemon Flux est en cours d'exécution.");
+    if daemon_was_running || gui_was_running {
+        let running_components: Vec<&str> = [
+            daemon_was_running.then_some("daemon"),
+            gui_was_running.then_some("GUI"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        println!(
+            "⚠️  Composants en cours d'exécution : {}",
+            running_components.join(", ")
+        );
 
         if !skip_confirmation {
             let confirmed = Confirm::new()
-                .with_prompt("Arrêter le daemon et continuer ?")
+                .with_prompt("Arrêter et continuer ?")
                 .default(true)
                 .interact()?;
 
@@ -41,8 +53,15 @@ pub async fn execute(skip_confirmation: bool) -> Result<()> {
             }
         }
 
-        println!("Arrêt du daemon...");
-        stop_daemon()?;
+        if gui_was_running {
+            println!("Arrêt du GUI...");
+            stop_gui()?;
+        }
+
+        if daemon_was_running {
+            println!("Arrêt du daemon...");
+            stop_daemon()?;
+        }
     }
 
     let backup_dir = create_backup()?;
@@ -55,10 +74,14 @@ pub async fn execute(skip_confirmation: bool) -> Result<()> {
             if verify_installation()? {
                 cleanup_backup(&backup_dir);
                 println!("\n✅ Flux mis à jour vers {}", latest_version);
+
+                restart_services(daemon_was_running, gui_was_running);
             } else {
                 println!("\n❌ Vérification échouée, restauration...");
                 restore_backup(&backup_dir)?;
                 println!("✅ Restauration réussie. Flux est toujours à {}.", current);
+
+                restart_services(daemon_was_running, gui_was_running);
             }
         }
         Err(error) => {
@@ -66,6 +89,8 @@ pub async fn execute(skip_confirmation: bool) -> Result<()> {
             println!("Restauration de la version précédente...");
             restore_backup(&backup_dir)?;
             println!("✅ Restauration réussie. Flux est toujours à {}.", current);
+
+            restart_services(daemon_was_running, gui_was_running);
         }
     }
 
@@ -91,13 +116,68 @@ async fn is_daemon_running() -> bool {
     client.send(flux_protocol::Request::Ping).await.is_ok()
 }
 
+fn is_gui_running() -> bool {
+    Command::new("pgrep")
+        .args(["-x", "flux-gui"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 fn stop_daemon() -> Result<()> {
     Command::new("pkill")
-        .args(["-f", "flux-daemon"])
+        .args(["-x", "flux-daemon"])
         .status()
         .context("Impossible d'arrêter le daemon")?;
 
     std::thread::sleep(std::time::Duration::from_millis(500));
+    Ok(())
+}
+
+fn stop_gui() -> Result<()> {
+    Command::new("pkill")
+        .args(["-x", "flux-gui"])
+        .status()
+        .context("Impossible d'arrêter le GUI")?;
+
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    Ok(())
+}
+
+fn restart_services(restart_daemon: bool, restart_gui: bool) {
+    if restart_daemon {
+        println!("Redémarrage du daemon...");
+        if let Err(error) = start_daemon() {
+            println!("⚠️  Impossible de redémarrer le daemon : {}", error);
+        } else {
+            println!("✅ Daemon redémarré");
+        }
+    }
+
+    if restart_gui {
+        println!("Redémarrage du GUI...");
+        if let Err(error) = start_gui() {
+            println!("⚠️  Impossible de redémarrer le GUI : {}", error);
+        } else {
+            println!("✅ GUI redémarré");
+        }
+    }
+}
+
+fn start_daemon() -> Result<()> {
+    Command::new("flux-daemon")
+        .spawn()
+        .context("Impossible de démarrer le daemon")?;
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    Ok(())
+}
+
+fn start_gui() -> Result<()> {
+    Command::new("flux-gui")
+        .spawn()
+        .context("Impossible de démarrer le GUI")?;
+
     Ok(())
 }
 
