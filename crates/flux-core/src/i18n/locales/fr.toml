@@ -144,6 +144,8 @@ duration_pomodoro = "Pomodoro"
 duration_long = "Long"
 duration_deep_work = "Deep Work"
 duration_custom = "Personnalisé"
+mark_as_focus = "Marquer focus"
+mark_as_distraction = "Marquer distraction"
 
 [error]
 daemon_not_running = "⚫ Le daemon n'est pas démarré"

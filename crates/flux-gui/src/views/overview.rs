@@ -49,7 +49,13 @@ pub fn render_period_selector(
     });
 }
 
-pub fn render_stats_cards(ui: &mut Ui, stats: &Stats, translator: &Translator, theme: &Theme) {
+pub fn render_stats_cards(
+    ui: &mut Ui,
+    stats: &Stats,
+    translator: &Translator,
+    theme: &Theme,
+) -> Option<String> {
+    let mut toggled_app = None;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(theme.spacing.md, theme.spacing.md);
 
@@ -121,7 +127,16 @@ pub fn render_stats_cards(ui: &mut Ui, stats: &Stats, translator: &Translator, t
             );
             ui.add_space(theme.spacing.md);
 
-            render_app_breakdown(ui, &stats.focus_applications, theme, theme.colors.accent);
+            if let Some(app) = render_app_breakdown(
+                ui,
+                &stats.focus_applications,
+                theme,
+                theme.colors.accent,
+                false,
+                translator,
+            ) {
+                toggled_app = Some(app);
+            }
         });
     }
 
@@ -159,12 +174,16 @@ pub fn render_stats_cards(ui: &mut Ui, stats: &Stats, translator: &Translator, t
             });
             ui.add_space(theme.spacing.md);
 
-            render_app_breakdown(
+            if let Some(app) = render_app_breakdown(
                 ui,
                 &stats.distraction_applications,
                 theme,
                 theme.colors.warning,
-            );
+                true,
+                translator,
+            ) {
+                toggled_app = Some(app);
+            }
         });
     }
 
@@ -207,6 +226,8 @@ pub fn render_stats_cards(ui: &mut Ui, stats: &Stats, translator: &Translator, t
             });
         });
     }
+
+    toggled_app
 }
 
 fn render_stat_card(
@@ -323,12 +344,15 @@ fn render_app_breakdown(
     applications: &std::collections::HashMap<String, i64>,
     theme: &Theme,
     bar_color: egui::Color32,
-) {
+    is_distraction_section: bool,
+    translator: &Translator,
+) -> Option<String> {
     let mut apps: Vec<_> = applications.iter().collect();
     apps.sort_by(|a, b| b.1.cmp(a.1));
 
     let total_app_time: i64 = apps.iter().map(|(_, s)| **s).sum();
     let total = total_app_time.max(1) as f32;
+    let mut toggled_app = None;
 
     for (application, seconds) in apps {
         let percentage = (*seconds as f32 / total * 100.0) as u32;
@@ -345,6 +369,33 @@ fn render_app_breakdown(
             );
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let toggle_text = if is_distraction_section {
+                    translator.get("gui.mark_as_focus")
+                } else {
+                    translator.get("gui.mark_as_distraction")
+                };
+
+                let toggle_color = if is_distraction_section {
+                    theme.colors.success
+                } else {
+                    theme.colors.warning
+                };
+
+                let toggle_button = egui::Button::new(
+                    egui::RichText::new(&toggle_text)
+                        .size(theme.typography.label)
+                        .color(toggle_color),
+                )
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(1.0, toggle_color))
+                .rounding(Rounding::same(theme.rounding.sm));
+
+                if ui.add(toggle_button).clicked() {
+                    toggled_app = Some(application.clone());
+                }
+
+                ui.add_space(theme.spacing.sm);
+
                 ui.label(
                     egui::RichText::new(format!("{}%", percentage))
                         .size(theme.typography.label)
@@ -378,6 +429,8 @@ fn render_app_breakdown(
 
         ui.add_space(theme.spacing.md);
     }
+
+    toggled_app
 }
 
 pub fn render_empty_state(ui: &mut Ui, translator: &Translator, theme: &Theme) {

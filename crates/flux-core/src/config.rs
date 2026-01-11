@@ -125,6 +125,86 @@ impl DistractionConfig {
         let lowercase = application_name.to_lowercase();
         self.apps.iter().any(|app| lowercase.contains(app))
     }
+
+    pub fn add_app(&mut self, app: &str) -> bool {
+        self.apps.insert(app.to_lowercase())
+    }
+
+    pub fn remove_app(&mut self, app: &str) -> bool {
+        self.apps.remove(&app.to_lowercase())
+    }
+
+    pub fn save(&self) -> Result<(), ConfigError> {
+        let config_path = Config::config_path();
+        let content = if config_path.exists() {
+            std::fs::read_to_string(&config_path)?
+        } else {
+            String::new()
+        };
+
+        let updated = self.update_toml_content(&content);
+
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(&config_path, updated)?;
+        Ok(())
+    }
+
+    fn update_toml_content(&self, content: &str) -> String {
+        let mut lines: Vec<String> = content.lines().map(String::from).collect();
+        let mut in_distractions_section = false;
+        let mut apps_updated = false;
+        let mut distractions_section_exists = false;
+
+        let mut sorted_apps: Vec<_> = self.apps.iter().collect();
+        sorted_apps.sort();
+        let apps_line = format!(
+            "apps = [{}]",
+            sorted_apps
+                .iter()
+                .map(|a| format!("\"{}\"", a))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        for line in &mut lines {
+            let trimmed = line.trim();
+
+            if trimmed.starts_with('[') {
+                in_distractions_section = trimmed == "[distractions]";
+                if in_distractions_section {
+                    distractions_section_exists = true;
+                }
+            }
+
+            if in_distractions_section && trimmed.starts_with("apps") {
+                *line = apps_line.clone();
+                apps_updated = true;
+            }
+        }
+
+        if !distractions_section_exists {
+            if !lines.is_empty() && !lines.last().unwrap().is_empty() {
+                lines.push(String::new());
+            }
+            lines.push("[distractions]".to_string());
+            lines.push(apps_line);
+            return lines.join("\n");
+        }
+
+        if !apps_updated {
+            for (index, line) in lines.iter().enumerate() {
+                if line.trim() == "[distractions]" {
+                    lines.insert(index + 1, apps_line);
+                    break;
+                }
+            }
+        }
+
+        lines.join("\n")
+    }
 }
 
 impl Config {

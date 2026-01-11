@@ -183,12 +183,17 @@ impl FluxApp {
         ui.add_space(self.theme.spacing.lg);
 
         if self.data.has_sessions() {
-            views::overview::render_stats_cards(
+            if let Some(app_to_toggle) = views::overview::render_stats_cards(
                 ui,
                 &self.current_stats,
                 &self.data.translator,
                 &self.theme,
-            );
+            ) {
+                if let Err(error) = self.data.toggle_distraction(&app_to_toggle) {
+                    tracing::warn!("toggle distraction failed: {}", error);
+                }
+                self.current_stats = self.data.stats_for_period(self.selected_period);
+            }
 
             let daily_data = self.data.daily_focus_for_period(self.selected_period);
             if !daily_data.is_empty() {

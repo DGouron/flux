@@ -173,7 +173,26 @@ impl StatsData {
         self.session_metrics = session_metrics;
         self.database_path = database_path;
 
+        let config = Config::load().unwrap_or_default();
+        self.distraction_config = config.distractions;
+
         Ok(())
+    }
+
+    pub fn toggle_distraction(&mut self, app_name: &str) -> Result<bool> {
+        let is_distraction = self.distraction_config.is_distraction(app_name);
+
+        if is_distraction {
+            self.distraction_config.remove_app(app_name);
+        } else {
+            self.distraction_config.add_app(app_name);
+        }
+
+        self.distraction_config
+            .save()
+            .context("impossible de sauvegarder la configuration")?;
+
+        Ok(!is_distraction)
     }
 }
 
