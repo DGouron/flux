@@ -13,10 +13,11 @@ pub use config::{
     Config, ConfigError, FocusConfig, GeneralConfig, NotificationConfig, NotificationUrgency,
     TrayConfig,
 };
-pub use domain::{FocusMode, Provider, ReviewAction, ReviewEvent, Session, SessionId};
+pub use domain::{AppUsage, FocusMode, Provider, ReviewAction, ReviewEvent, Session, SessionId};
 pub use i18n::{Language, Translator, UnsupportedLanguageError};
 pub use ports::{
-    ReviewActivityGateway, ReviewGatewayError, SessionRepository, SessionRepositoryError,
+    AppTrackingRepository, AppTrackingRepositoryError, ReviewActivityGateway, ReviewGatewayError,
+    SessionRepository, SessionRepositoryError,
 };
 pub use secrets::{
     resolve_github_credentials, resolve_gitlab_credentials, ProviderCredentials, SecretsError,

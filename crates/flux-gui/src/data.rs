@@ -3,8 +3,10 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
-use flux_adapters::SqliteSessionRepository;
-use flux_core::{Config, Session, SessionId, SessionRepository, Translator};
+use flux_adapters::{SqliteAppTrackingRepository, SqliteSessionRepository};
+use flux_core::{
+    AppTrackingRepository, AppUsage, Config, Session, SessionId, SessionRepository, Translator,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Period {
@@ -34,6 +36,7 @@ pub struct Stats {
     pub total_seconds: i64,
     pub session_count: usize,
     pub by_mode: HashMap<String, i64>,
+    pub by_application: HashMap<String, i64>,
     pub total_check_ins: i32,
 }
 
@@ -48,13 +51,20 @@ pub struct DailyFocus {
 pub struct StatsData {
     pub translator: Translator,
     pub sessions: Vec<Session>,
+    pub app_usages: Vec<AppUsage>,
     database_path: Option<PathBuf>,
 }
 
 impl StatsData {
     pub fn stats_for_period(&self, period: Period) -> Stats {
         let filtered = self.sessions_for_period(period);
-        compute_stats(&filtered)
+        let session_ids: Vec<i64> = filtered.iter().filter_map(|s| s.id).collect();
+        let filtered_usages: Vec<&AppUsage> = self
+            .app_usages
+            .iter()
+            .filter(|u| session_ids.contains(&u.session_id))
+            .collect();
+        compute_stats(&filtered, &filtered_usages)
     }
 
     pub fn sessions_for_period(&self, period: Period) -> Vec<&Session> {
@@ -136,9 +146,13 @@ pub fn load_initial_data() -> Result<StatsData> {
     let translator = get_translator();
     let (sessions, database_path) = load_all_sessions()?;
 
+    let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
+    let app_usages = load_app_usages(&session_ids, database_path.as_ref());
+
     Ok(StatsData {
         translator,
         sessions,
+        app_usages,
         database_path,
     })
 }
@@ -172,6 +186,19 @@ fn load_all_sessions() -> Result<(Vec<Session>, Option<PathBuf>)> {
     Ok((sessions, Some(database_path)))
 }
 
+fn load_app_usages(session_ids: &[i64], database_path: Option<&PathBuf>) -> Vec<AppUsage> {
+    let Some(path) = database_path else {
+        return Vec::new();
+    };
+
+    let repository = match SqliteAppTrackingRepository::new(path) {
+        Ok(repo) => repo,
+        Err(_) => return Vec::new(),
+    };
+
+    repository.find_by_sessions(session_ids).unwrap_or_default()
+}
+
 fn period_start(period: Period) -> DateTime<Utc> {
     match period {
         Period::Today => Local::now()
@@ -187,7 +214,7 @@ fn period_start(period: Period) -> DateTime<Utc> {
     }
 }
 
-fn compute_stats(sessions: &[&Session]) -> Stats {
+fn compute_stats(sessions: &[&Session], app_usages: &[&AppUsage]) -> Stats {
     let mut total_seconds = 0i64;
     let mut by_mode: HashMap<String, i64> = HashMap::new();
     let mut total_check_ins = 0i32;
@@ -201,10 +228,18 @@ fn compute_stats(sessions: &[&Session]) -> Stats {
         *by_mode.entry(mode_key).or_insert(0) += duration;
     }
 
+    let mut by_application: HashMap<String, i64> = HashMap::new();
+    for usage in app_usages {
+        *by_application
+            .entry(usage.application_name.clone())
+            .or_insert(0) += usage.duration_seconds;
+    }
+
     Stats {
         total_seconds,
         session_count: sessions.len(),
         by_mode,
+        by_application,
         total_check_ins,
     }
 }
@@ -243,5 +278,6 @@ mod tests {
         assert_eq!(stats.total_seconds, 0);
         assert_eq!(stats.session_count, 0);
         assert!(stats.by_mode.is_empty());
+        assert!(stats.by_application.is_empty());
     }
 }

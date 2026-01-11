@@ -6,9 +6,9 @@ use tracing::{debug, error, info};
 
 use flux_core::{Config, FocusMode, Session, SessionRepository, Translator};
 
-use super::NotifierHandle;
 #[cfg(target_os = "linux")]
 use super::TrayStateHandle;
+use super::{AppTrackerHandle, NotifierHandle};
 
 pub enum TimerMessage {
     Start {
@@ -45,6 +45,7 @@ pub struct TimerActor {
     receiver: mpsc::Receiver<TimerMessage>,
     state: Option<TimerState>,
     notifier: Option<NotifierHandle>,
+    app_tracker: Option<AppTrackerHandle>,
     #[cfg(target_os = "linux")]
     tray_state: Option<TrayStateHandle>,
     session_repository: Option<Arc<dyn SessionRepository>>,
@@ -100,6 +101,7 @@ impl TimerActor {
     #[cfg(target_os = "linux")]
     pub fn new(
         notifier: Option<NotifierHandle>,
+        app_tracker: Option<AppTrackerHandle>,
         tray_state: Option<TrayStateHandle>,
         session_repository: Option<Arc<dyn SessionRepository>>,
     ) -> (Self, TimerHandle) {
@@ -109,6 +111,7 @@ impl TimerActor {
             receiver,
             state: None,
             notifier,
+            app_tracker,
             tray_state,
             session_repository,
             current_session: None,
@@ -122,6 +125,7 @@ impl TimerActor {
     #[cfg(not(target_os = "linux"))]
     pub fn new(
         notifier: Option<NotifierHandle>,
+        app_tracker: Option<AppTrackerHandle>,
         session_repository: Option<Arc<dyn SessionRepository>>,
     ) -> (Self, TimerHandle) {
         let (sender, receiver) = mpsc::channel(32);
@@ -130,6 +134,7 @@ impl TimerActor {
             receiver,
             state: None,
             notifier,
+            app_tracker,
             session_repository,
             current_session: None,
         };
@@ -290,11 +295,21 @@ impl TimerActor {
                             if let Some(ref notifier) = self.notifier {
                                 notifier.send_session_start(duration_minutes);
                             }
+
+                            if let (Some(ref app_tracker), Some(ref session)) = (&self.app_tracker, &self.current_session) {
+                                if let Some(session_id) = session.id {
+                                    app_tracker.send_session_started(session_id);
+                                }
+                            }
                         }
                         TimerMessage::Stop => {
                             if self.state.is_some() {
                                 let total = self.total_minutes();
                                 info!("session stopped");
+
+                                if let Some(ref app_tracker) = self.app_tracker {
+                                    app_tracker.send_session_ended();
+                                }
 
                                 self.persist_session_end();
                                 self.update_tray_inactive();
@@ -313,6 +328,10 @@ impl TimerActor {
                                     let remaining = state.remaining;
                                     info!("session paused");
 
+                                    if let Some(ref app_tracker) = self.app_tracker {
+                                        app_tracker.send_session_paused();
+                                    }
+
                                     self.update_tray_paused(remaining);
 
                                     if let Some(ref notifier) = self.notifier {
@@ -329,6 +348,10 @@ impl TimerActor {
                                     let remaining = state.remaining;
                                     let mode = state.mode.clone();
                                     info!("session resumed");
+
+                                    if let Some(ref app_tracker) = self.app_tracker {
+                                        app_tracker.send_session_resumed();
+                                    }
 
                                     self.update_tray_active(remaining, mode);
 
@@ -375,6 +398,10 @@ impl TimerActor {
                         if session_complete {
                             let total = self.total_minutes();
                             info!("session completed");
+
+                            if let Some(ref app_tracker) = self.app_tracker {
+                                app_tracker.send_session_ended();
+                            }
 
                             self.persist_session_end();
                             self.update_tray_inactive();
@@ -431,12 +458,12 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     fn create_test_actor() -> (TimerActor, TimerHandle) {
-        TimerActor::new(None, None, None)
+        TimerActor::new(None, None, None, None)
     }
 
     #[cfg(not(target_os = "linux"))]
     fn create_test_actor() -> (TimerActor, TimerHandle) {
-        TimerActor::new(None, None)
+        TimerActor::new(None, None, None)
     }
 
     #[tokio::test]

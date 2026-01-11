@@ -106,6 +106,22 @@ pub fn render_stats_cards(ui: &mut Ui, stats: &Stats, translator: &Translator, t
             render_mode_breakdown(ui, stats, theme);
         });
     }
+
+    if !stats.by_application.is_empty() {
+        ui.add_space(theme.spacing.lg);
+
+        theme.card_frame().show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("Applications")
+                    .size(theme.typography.title)
+                    .color(theme.colors.text_primary)
+                    .strong(),
+            );
+            ui.add_space(theme.spacing.md);
+
+            render_app_breakdown(ui, stats, theme);
+        });
+    }
 }
 
 fn render_stat_card(
@@ -212,6 +228,64 @@ fn render_mode_breakdown(ui: &mut Ui, stats: &Stats, theme: &Theme) {
         let filled_width = rect.width() * progress;
         let filled_rect = egui::Rect::from_min_size(rect.min, egui::vec2(filled_width, bar_height));
         ui.painter().rect_filled(filled_rect, rounding, mode_color);
+
+        ui.add_space(theme.spacing.md);
+    }
+}
+
+fn render_app_breakdown(ui: &mut Ui, stats: &Stats, theme: &Theme) {
+    let mut apps: Vec<_> = stats.by_application.iter().collect();
+    apps.sort_by(|a, b| b.1.cmp(a.1));
+
+    let total_app_time: i64 = apps.iter().map(|(_, s)| **s).sum();
+    let total = total_app_time.max(1) as f32;
+
+    for (application, seconds) in apps {
+        let percentage = (*seconds as f32 / total * 100.0) as u32;
+        let progress = *seconds as f32 / total;
+
+        ui.horizontal(|ui| {
+            ui.set_min_width(ui.available_width());
+
+            ui.label(
+                egui::RichText::new(application)
+                    .size(theme.typography.body)
+                    .color(theme.colors.text_primary)
+                    .strong(),
+            );
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new(format!("{}%", percentage))
+                        .size(theme.typography.label)
+                        .color(theme.colors.text_muted),
+                );
+
+                ui.label(
+                    egui::RichText::new(format_duration(*seconds))
+                        .size(theme.typography.body)
+                        .color(theme.colors.text_secondary),
+                );
+            });
+        });
+
+        ui.add_space(theme.spacing.xs);
+
+        let bar_height = 6.0;
+        let (rect, _response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), bar_height),
+            egui::Sense::hover(),
+        );
+
+        let rounding = Rounding::same(bar_height / 2.0);
+
+        ui.painter()
+            .rect_filled(rect, rounding, theme.colors.surface_elevated);
+
+        let filled_width = rect.width() * progress;
+        let filled_rect = egui::Rect::from_min_size(rect.min, egui::vec2(filled_width, bar_height));
+        ui.painter()
+            .rect_filled(filled_rect, rounding, theme.colors.accent);
 
         ui.add_space(theme.spacing.md);
     }

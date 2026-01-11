@@ -1596,6 +1596,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "which",
+ "x11rb",
 ]
 
 [[package]]
