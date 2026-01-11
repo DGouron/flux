@@ -16,9 +16,15 @@ egui_plot = "0.30"
 
 flux-core = { path = "../flux-core" }
 flux-adapters = { path = "../flux-adapters" }
+flux-protocol = { path = "../flux-protocol" }
 
 chrono = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 dirs = { workspace = true }
+tokio = { workspace = true }
+interprocess = { workspace = true }
+bincode = { workspace = true }
+libc = { workspace = true }

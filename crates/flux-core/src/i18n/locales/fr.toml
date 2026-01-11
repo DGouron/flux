@@ -113,6 +113,11 @@ clear_confirm_title = "Confirmation"
 clear_confirm_message = "Supprimer {count} sessions ? Cette action est irréversible."
 clear_cancel = "Annuler"
 clear_confirm = "Confirmer"
+duration_short = "Court"
+duration_pomodoro = "Pomodoro"
+duration_long = "Long"
+duration_deep_work = "Deep Work"
+duration_custom = "Personnalisé"
 
 [error]
 daemon_not_running = "⚫ Le daemon n'est pas démarré"
