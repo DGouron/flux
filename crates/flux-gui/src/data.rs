@@ -5,7 +5,8 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
 use flux_adapters::{SqliteAppTrackingRepository, SqliteSessionRepository};
 use flux_core::{
-    AppTrackingRepository, AppUsage, Config, Session, SessionId, SessionRepository, Translator,
+    AppTrackingRepository, AppUsage, Config, DistractionConfig, Session, SessionId,
+    SessionRepository, Translator,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +37,9 @@ pub struct Stats {
     pub total_seconds: i64,
     pub session_count: usize,
     pub by_mode: HashMap<String, i64>,
-    pub by_application: HashMap<String, i64>,
+    pub focus_applications: HashMap<String, i64>,
+    pub distraction_applications: HashMap<String, i64>,
+    pub total_distraction_seconds: i64,
     pub total_check_ins: i32,
 }
 
@@ -52,6 +55,7 @@ pub struct StatsData {
     pub translator: Translator,
     pub sessions: Vec<Session>,
     pub app_usages: Vec<AppUsage>,
+    pub distraction_config: DistractionConfig,
     database_path: Option<PathBuf>,
 }
 
@@ -64,7 +68,7 @@ impl StatsData {
             .iter()
             .filter(|u| session_ids.contains(&u.session_id))
             .collect();
-        compute_stats(&filtered, &filtered_usages)
+        compute_stats(&filtered, &filtered_usages, &self.distraction_config)
     }
 
     pub fn sessions_for_period(&self, period: Period) -> Vec<&Session> {
@@ -155,7 +159,9 @@ impl StatsData {
 }
 
 pub fn load_initial_data() -> Result<StatsData> {
-    let translator = get_translator();
+    let config = Config::load().unwrap_or_default();
+    let translator = Translator::new(config.general.language);
+    let distraction_config = config.distractions;
     let (sessions, database_path) = load_all_sessions()?;
 
     let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
@@ -165,14 +171,9 @@ pub fn load_initial_data() -> Result<StatsData> {
         translator,
         sessions,
         app_usages,
+        distraction_config,
         database_path,
     })
-}
-
-fn get_translator() -> Translator {
-    Config::load()
-        .map(|config| Translator::new(config.general.language))
-        .unwrap_or_default()
 }
 
 fn load_all_sessions() -> Result<(Vec<Session>, Option<PathBuf>)> {
@@ -226,7 +227,11 @@ fn period_start(period: Period) -> DateTime<Utc> {
     }
 }
 
-fn compute_stats(sessions: &[&Session], app_usages: &[&AppUsage]) -> Stats {
+fn compute_stats(
+    sessions: &[&Session],
+    app_usages: &[&AppUsage],
+    distraction_config: &DistractionConfig,
+) -> Stats {
     let mut total_seconds = 0i64;
     let mut by_mode: HashMap<String, i64> = HashMap::new();
     let mut total_check_ins = 0i32;
@@ -240,18 +245,30 @@ fn compute_stats(sessions: &[&Session], app_usages: &[&AppUsage]) -> Stats {
         *by_mode.entry(mode_key).or_insert(0) += duration;
     }
 
-    let mut by_application: HashMap<String, i64> = HashMap::new();
+    let mut focus_applications: HashMap<String, i64> = HashMap::new();
+    let mut distraction_applications: HashMap<String, i64> = HashMap::new();
+    let mut total_distraction_seconds = 0i64;
+
     for usage in app_usages {
-        *by_application
-            .entry(usage.application_name.clone())
-            .or_insert(0) += usage.duration_seconds;
+        if distraction_config.is_distraction(&usage.application_name) {
+            *distraction_applications
+                .entry(usage.application_name.clone())
+                .or_insert(0) += usage.duration_seconds;
+            total_distraction_seconds += usage.duration_seconds;
+        } else {
+            *focus_applications
+                .entry(usage.application_name.clone())
+                .or_insert(0) += usage.duration_seconds;
+        }
     }
 
     Stats {
         total_seconds,
         session_count: sessions.len(),
         by_mode,
-        by_application,
+        focus_applications,
+        distraction_applications,
+        total_distraction_seconds,
         total_check_ins,
     }
 }
@@ -290,6 +307,8 @@ mod tests {
         assert_eq!(stats.total_seconds, 0);
         assert_eq!(stats.session_count, 0);
         assert!(stats.by_mode.is_empty());
-        assert!(stats.by_application.is_empty());
+        assert!(stats.focus_applications.is_empty());
+        assert!(stats.distraction_applications.is_empty());
+        assert_eq!(stats.total_distraction_seconds, 0);
     }
 }

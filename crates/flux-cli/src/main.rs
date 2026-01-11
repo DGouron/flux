@@ -72,6 +72,29 @@ enum Commands {
         /// Identifiant de la session à supprimer
         id: i64,
     },
+    /// Gérer la liste des applications de distraction
+    Distractions {
+        #[command(subcommand)]
+        action: DistractionsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum DistractionsAction {
+    /// Afficher la liste des distractions configurées
+    List,
+    /// Ajouter une application à la liste des distractions
+    Add {
+        /// Nom de l'application à ajouter
+        app: String,
+    },
+    /// Retirer une application de la liste des distractions
+    Remove {
+        /// Nom de l'application à retirer
+        app: String,
+    },
+    /// Réinitialiser la liste aux valeurs par défaut
+    Reset,
 }
 
 #[tokio::main]
@@ -100,6 +123,12 @@ async fn main() {
         Commands::Dashboard => commands::dashboard(),
         Commands::Clear { yes } => commands::clear(yes).await,
         Commands::Delete { id } => commands::delete(id).await,
+        Commands::Distractions { action } => match action {
+            DistractionsAction::List => commands::distractions::list(),
+            DistractionsAction::Add { app } => commands::distractions::add(&app),
+            DistractionsAction::Remove { app } => commands::distractions::remove(&app),
+            DistractionsAction::Reset => commands::distractions::reset(),
+        },
     };
 
     if let Err(error) = result {

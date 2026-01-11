@@ -1,6 +1,7 @@
 mod clear;
 mod dashboard;
 mod delete;
+pub mod distractions;
 mod init;
 mod lang;
 mod pause;

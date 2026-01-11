@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use chrono::{Duration, Local, Utc};
 use flux_adapters::{SqliteAppTrackingRepository, SqliteSessionRepository};
-use flux_core::{AppTrackingRepository, AppUsage, Config, Session, SessionRepository, Translator};
+use flux_core::{
+    AppTrackingRepository, AppUsage, Config, DistractionConfig, Session, SessionRepository,
+    Translator,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Period {
@@ -35,7 +38,8 @@ impl Period {
 }
 
 pub async fn execute(period: Period) -> Result<()> {
-    let translator = get_translator();
+    let config = Config::load().unwrap_or_default();
+    let translator = Translator::new(config.general.language);
     let repository = open_repository()?;
     let sessions = fetch_sessions(&repository, period)?;
 
@@ -47,16 +51,10 @@ pub async fn execute(period: Period) -> Result<()> {
     let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
     let app_usages = fetch_app_tracking(&session_ids);
 
-    let stats = compute_stats(&sessions, &app_usages);
+    let stats = compute_stats(&sessions, &app_usages, &config.distractions);
     display_stats(&stats, period, &translator);
 
     Ok(())
-}
-
-fn get_translator() -> Translator {
-    Config::load()
-        .map(|config| Translator::new(config.general.language))
-        .unwrap_or_default()
 }
 
 fn open_repository() -> Result<SqliteSessionRepository> {
@@ -117,11 +115,17 @@ struct Stats {
     total_seconds: i64,
     session_count: usize,
     by_mode: HashMap<String, i64>,
-    by_application: HashMap<String, i64>,
+    focus_applications: HashMap<String, i64>,
+    distraction_applications: HashMap<String, i64>,
+    total_distraction_seconds: i64,
     total_check_ins: i32,
 }
 
-fn compute_stats(sessions: &[Session], app_usages: &[AppUsage]) -> Stats {
+fn compute_stats(
+    sessions: &[Session],
+    app_usages: &[AppUsage],
+    distraction_config: &DistractionConfig,
+) -> Stats {
     let mut total_seconds = 0i64;
     let mut by_mode: HashMap<String, i64> = HashMap::new();
     let mut total_check_ins = 0i32;
@@ -135,18 +139,30 @@ fn compute_stats(sessions: &[Session], app_usages: &[AppUsage]) -> Stats {
         *by_mode.entry(mode_key).or_insert(0) += duration;
     }
 
-    let mut by_application: HashMap<String, i64> = HashMap::new();
+    let mut focus_applications: HashMap<String, i64> = HashMap::new();
+    let mut distraction_applications: HashMap<String, i64> = HashMap::new();
+    let mut total_distraction_seconds = 0i64;
+
     for usage in app_usages {
-        *by_application
-            .entry(usage.application_name.clone())
-            .or_insert(0) += usage.duration_seconds;
+        if distraction_config.is_distraction(&usage.application_name) {
+            *distraction_applications
+                .entry(usage.application_name.clone())
+                .or_insert(0) += usage.duration_seconds;
+            total_distraction_seconds += usage.duration_seconds;
+        } else {
+            *focus_applications
+                .entry(usage.application_name.clone())
+                .or_insert(0) += usage.duration_seconds;
+        }
     }
 
     Stats {
         total_seconds,
         session_count: sessions.len(),
         by_mode,
-        by_application,
+        focus_applications,
+        distraction_applications,
+        total_distraction_seconds,
         total_check_ins,
     }
 }
@@ -197,32 +213,12 @@ fn display_stats(stats: &Stats, period: Period, translator: &Translator) {
         println!();
     }
 
-    if !stats.by_application.is_empty() {
-        println!("Applications:");
+    display_applications(
+        &stats.focus_applications,
+        &translator.get("command.stats_focus_apps"),
+    );
 
-        let mut apps: Vec<_> = stats.by_application.iter().collect();
-        apps.sort_by(|a, b| b.1.cmp(a.1));
-
-        let total_app_time: i64 = apps.iter().map(|(_, s)| **s).sum();
-        let total = total_app_time.max(1) as f64;
-
-        for (index, (app, seconds)) in apps.iter().enumerate() {
-            let percentage = (**seconds as f64 / total * 100.0) as u32;
-            let prefix = if index == apps.len() - 1 {
-                "└──"
-            } else {
-                "├──"
-            };
-            println!(
-                "{} {:14} {:>8} ({}%)",
-                prefix,
-                format!("{}:", app),
-                format_duration(**seconds),
-                percentage
-            );
-        }
-        println!();
-    }
+    display_distractions(stats, translator);
 
     if stats.session_count > 0 {
         let avg_seconds = stats.total_seconds / stats.session_count as i64;
@@ -241,6 +237,85 @@ fn display_stats(stats: &Stats, period: Period, translator: &Translator) {
         );
     }
 
+    println!();
+}
+
+fn display_applications(applications: &HashMap<String, i64>, header: &str) {
+    if applications.is_empty() {
+        return;
+    }
+
+    println!("{}:", header);
+
+    let mut apps: Vec<_> = applications.iter().collect();
+    apps.sort_by(|a, b| b.1.cmp(a.1));
+
+    let total_app_time: i64 = apps.iter().map(|(_, seconds)| **seconds).sum();
+    let total = total_app_time.max(1) as f64;
+
+    for (index, (app, seconds)) in apps.iter().enumerate() {
+        let percentage = (**seconds as f64 / total * 100.0) as u32;
+        let prefix = if index == apps.len() - 1 {
+            "└──"
+        } else {
+            "├──"
+        };
+        println!(
+            "{} {:14} {:>8} ({}%)",
+            prefix,
+            format!("{}:", app),
+            format_duration(**seconds),
+            percentage
+        );
+    }
+    println!();
+}
+
+fn display_distractions(stats: &Stats, translator: &Translator) {
+    if stats.distraction_applications.is_empty() {
+        return;
+    }
+
+    let total_tracked_time: i64 = stats
+        .focus_applications
+        .values()
+        .chain(stats.distraction_applications.values())
+        .sum();
+
+    let distraction_percentage = if total_tracked_time > 0 {
+        (stats.total_distraction_seconds as f64 / total_tracked_time as f64 * 100.0) as u32
+    } else {
+        0
+    };
+
+    println!(
+        "{} ({}% {}):",
+        translator.get("command.stats_distractions"),
+        distraction_percentage,
+        translator.get("command.stats_time_lost")
+    );
+
+    let mut apps: Vec<_> = stats.distraction_applications.iter().collect();
+    apps.sort_by(|a, b| b.1.cmp(a.1));
+
+    let top_apps: Vec<_> = apps.into_iter().take(5).collect();
+    let total = stats.total_distraction_seconds.max(1) as f64;
+
+    for (index, (app, seconds)) in top_apps.iter().enumerate() {
+        let percentage = (**seconds as f64 / total * 100.0) as u32;
+        let prefix = if index == top_apps.len() - 1 {
+            "└──"
+        } else {
+            "├──"
+        };
+        println!(
+            "{} {:14} {:>8} ({}%)",
+            prefix,
+            format!("{}:", app),
+            format_duration(**seconds),
+            percentage
+        );
+    }
     println!();
 }
 
@@ -295,31 +370,62 @@ mod tests {
             create_test_session(FocusMode::Prompting, 1200, 1),
             create_test_session(FocusMode::Review, 900, 0),
         ];
+        let distraction_config = create_test_distraction_config();
 
-        let stats = compute_stats(&sessions, &[]);
+        let stats = compute_stats(&sessions, &[], &distraction_config);
 
         assert_eq!(stats.total_seconds, 3900);
         assert_eq!(stats.session_count, 3);
         assert_eq!(stats.by_mode.get("prompting"), Some(&3000));
         assert_eq!(stats.by_mode.get("review"), Some(&900));
         assert_eq!(stats.total_check_ins, 3);
-        assert!(stats.by_application.is_empty());
+        assert!(stats.focus_applications.is_empty());
+        assert!(stats.distraction_applications.is_empty());
     }
 
     #[test]
-    fn compute_stats_aggregates_app_usage() {
+    fn compute_stats_separates_focus_and_distraction_apps() {
         use flux_core::FocusMode;
 
         let sessions = vec![create_test_session(FocusMode::Prompting, 1800, 0)];
         let app_usages = vec![
             AppUsage::with_duration(1, "cursor".to_string(), 1000),
             AppUsage::with_duration(1, "firefox".to_string(), 500),
+            AppUsage::with_duration(1, "Discord".to_string(), 200),
+            AppUsage::with_duration(1, "Slack".to_string(), 100),
         ];
+        let distraction_config = create_test_distraction_config();
 
-        let stats = compute_stats(&sessions, &app_usages);
+        let stats = compute_stats(&sessions, &app_usages, &distraction_config);
 
-        assert_eq!(stats.by_application.get("cursor"), Some(&1000));
-        assert_eq!(stats.by_application.get("firefox"), Some(&500));
+        assert_eq!(stats.focus_applications.get("cursor"), Some(&1000));
+        assert_eq!(stats.focus_applications.get("firefox"), Some(&500));
+        assert_eq!(stats.distraction_applications.get("Discord"), Some(&200));
+        assert_eq!(stats.distraction_applications.get("Slack"), Some(&100));
+        assert_eq!(stats.total_distraction_seconds, 300);
+    }
+
+    #[test]
+    fn compute_stats_aggregates_same_app_across_sessions() {
+        use flux_core::FocusMode;
+
+        let sessions = vec![
+            create_test_session(FocusMode::Prompting, 1800, 0),
+            create_test_session(FocusMode::Prompting, 1200, 0),
+        ];
+        let app_usages = vec![
+            AppUsage::with_duration(1, "cursor".to_string(), 1000),
+            AppUsage::with_duration(2, "cursor".to_string(), 800),
+            AppUsage::with_duration(1, "Discord".to_string(), 100),
+            AppUsage::with_duration(2, "Discord".to_string(), 150),
+        ];
+        let distraction_config = create_test_distraction_config();
+
+        let stats = compute_stats(&sessions, &app_usages, &distraction_config);
+
+        assert_eq!(stats.focus_applications.get("cursor"), Some(&1800));
+        assert_eq!(stats.distraction_applications.get("Discord"), Some(&250));
+        assert_eq!(stats.total_distraction_seconds, 250);
     }
 
     fn create_test_session(mode: flux_core::FocusMode, duration: i64, check_ins: i32) -> Session {
@@ -327,5 +433,14 @@ mod tests {
         session.duration_seconds = Some(duration);
         session.check_in_count = check_ins;
         session
+    }
+
+    fn create_test_distraction_config() -> DistractionConfig {
+        use std::collections::HashSet;
+        DistractionConfig {
+            apps: HashSet::from(["discord".to_string(), "slack".to_string()]),
+            alert_enabled: false,
+            alert_after_seconds: 30,
+        }
     }
 }

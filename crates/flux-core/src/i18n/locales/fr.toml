@@ -58,6 +58,17 @@ stats_total_time = "Temps total"
 stats_average_duration = "Durée moyenne"
 stats_check_ins = "Check-ins"
 stats_no_sessions = "Aucune session pour cette période"
+stats_focus_apps = "Applications focus"
+stats_distractions = "Distractions"
+stats_time_lost = "du temps perdu"
+
+# Distractions command
+distractions_current_list = "Applications de distraction configurées"
+distractions_already_exists = "'{app}' est déjà dans la liste des distractions"
+distractions_added = "✅ '{app}' ajouté aux distractions"
+distractions_not_found = "'{app}' n'est pas dans la liste des distractions"
+distractions_removed = "🗑️  '{app}' retiré des distractions"
+distractions_reset = "✅ Liste des distractions réinitialisée aux valeurs par défaut"
 
 # Dashboard command
 dashboard_launched = "📊 Dashboard ouvert"

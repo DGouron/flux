@@ -107,19 +107,62 @@ pub fn render_stats_cards(ui: &mut Ui, stats: &Stats, translator: &Translator, t
         });
     }
 
-    if !stats.by_application.is_empty() {
+    if !stats.focus_applications.is_empty() {
         ui.add_space(theme.spacing.lg);
 
         theme.card_frame().show(ui, |ui| {
             ui.label(
-                egui::RichText::new("Applications")
+                egui::RichText::new(translator.get("command.stats_focus_apps"))
                     .size(theme.typography.title)
                     .color(theme.colors.text_primary)
                     .strong(),
             );
             ui.add_space(theme.spacing.md);
 
-            render_app_breakdown(ui, stats, theme);
+            render_app_breakdown(ui, &stats.focus_applications, theme, theme.colors.accent);
+        });
+    }
+
+    if !stats.distraction_applications.is_empty() {
+        ui.add_space(theme.spacing.lg);
+
+        let total_tracked: i64 = stats
+            .focus_applications
+            .values()
+            .chain(stats.distraction_applications.values())
+            .sum();
+        let distraction_percent = if total_tracked > 0 {
+            (stats.total_distraction_seconds as f64 / total_tracked as f64 * 100.0) as u32
+        } else {
+            0
+        };
+
+        theme.card_frame().show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(translator.get("command.stats_distractions"))
+                        .size(theme.typography.title)
+                        .color(theme.colors.text_primary)
+                        .strong(),
+                );
+                ui.label(
+                    egui::RichText::new(format!(
+                        "({}% {})",
+                        distraction_percent,
+                        translator.get("command.stats_time_lost")
+                    ))
+                    .size(theme.typography.label)
+                    .color(theme.colors.warning),
+                );
+            });
+            ui.add_space(theme.spacing.md);
+
+            render_app_breakdown(
+                ui,
+                &stats.distraction_applications,
+                theme,
+                theme.colors.warning,
+            );
         });
     }
 }
@@ -233,8 +276,13 @@ fn render_mode_breakdown(ui: &mut Ui, stats: &Stats, theme: &Theme) {
     }
 }
 
-fn render_app_breakdown(ui: &mut Ui, stats: &Stats, theme: &Theme) {
-    let mut apps: Vec<_> = stats.by_application.iter().collect();
+fn render_app_breakdown(
+    ui: &mut Ui,
+    applications: &std::collections::HashMap<String, i64>,
+    theme: &Theme,
+    bar_color: egui::Color32,
+) {
+    let mut apps: Vec<_> = applications.iter().collect();
     apps.sort_by(|a, b| b.1.cmp(a.1));
 
     let total_app_time: i64 = apps.iter().map(|(_, s)| **s).sum();
@@ -284,8 +332,7 @@ fn render_app_breakdown(ui: &mut Ui, stats: &Stats, theme: &Theme) {
 
         let filled_width = rect.width() * progress;
         let filled_rect = egui::Rect::from_min_size(rect.min, egui::vec2(filled_width, bar_height));
-        ui.painter()
-            .rect_filled(filled_rect, rounding, theme.colors.accent);
+        ui.painter().rect_filled(filled_rect, rounding, bar_color);
 
         ui.add_space(theme.spacing.md);
     }
