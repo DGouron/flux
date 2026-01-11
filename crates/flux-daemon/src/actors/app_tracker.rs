@@ -10,7 +10,9 @@ use flux_core::{
     SessionMetricsRepository, SuggestionReport, Translator,
 };
 
+use super::notifier::FrictionResponse;
 use super::NotifierHandle;
+use tokio::sync::oneshot;
 
 #[cfg(target_os = "linux")]
 use crate::window::{WindowDetector, X11WindowDetector};
@@ -80,6 +82,10 @@ struct TrackerState {
     app_consecutive_seconds: u64,
     short_burst_count: HashMap<String, u32>,
     context_switch_count: u32,
+    current_friction_app: Option<String>,
+    friction_consecutive_seconds: u64,
+    friction_reminder_count: u32,
+    friction_response_pending: Option<oneshot::Receiver<FrictionResponse>>,
 }
 
 pub struct AppTrackerActor {
@@ -182,6 +188,10 @@ impl AppTrackerActor {
                     app_consecutive_seconds: 0,
                     short_burst_count: HashMap::new(),
                     context_switch_count: 0,
+                    current_friction_app: None,
+                    friction_consecutive_seconds: 0,
+                    friction_reminder_count: 0,
+                    friction_response_pending: None,
                 });
             }
             AppTrackerMessage::Ended => {
@@ -244,6 +254,7 @@ impl AppTrackerActor {
 
         self.track_context_switch(&application_name);
         self.track_distraction(&application_name);
+        self.track_friction(&application_name);
     }
 
     fn track_context_switch(&mut self, application_name: &str) {
@@ -361,6 +372,110 @@ impl AppTrackerActor {
             app,
             seconds = state.distraction_consecutive_seconds,
             "distraction alert sent"
+        );
+    }
+
+    fn track_friction(&mut self, application_name: &str) {
+        self.check_friction_response();
+
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        let is_friction = self.distraction_config.is_friction(application_name);
+
+        if !is_friction {
+            state.current_friction_app = None;
+            state.friction_consecutive_seconds = 0;
+            state.friction_reminder_count = 0;
+            return;
+        }
+
+        let same_app = state
+            .current_friction_app
+            .as_ref()
+            .map(|app| app == application_name)
+            .unwrap_or(false);
+
+        if same_app {
+            state.friction_consecutive_seconds += POLLING_INTERVAL_SECONDS;
+        } else {
+            state.current_friction_app = Some(application_name.to_string());
+            state.friction_consecutive_seconds = POLLING_INTERVAL_SECONDS;
+            state.friction_reminder_count = 0;
+        }
+
+        self.maybe_send_friction_notification();
+    }
+
+    fn check_friction_response(&mut self) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        let Some(mut receiver) = state.friction_response_pending.take() else {
+            return;
+        };
+
+        match receiver.try_recv() {
+            Ok(FrictionResponse::Continue) => {
+                debug!("friction: user chose to continue");
+                state.friction_consecutive_seconds = 0;
+            }
+            Ok(FrictionResponse::BackToWork) => {
+                info!("friction: user chose to return to work");
+                state.friction_consecutive_seconds = 0;
+            }
+            Ok(FrictionResponse::StopSession) => {
+                info!("friction: user chose to stop session");
+                state.friction_consecutive_seconds = 0;
+                state.friction_reminder_count = 0;
+            }
+            Err(oneshot::error::TryRecvError::Empty) => {
+                state.friction_response_pending = Some(receiver);
+            }
+            Err(oneshot::error::TryRecvError::Closed) => {
+                debug!("friction: response channel closed, assuming continue");
+                state.friction_consecutive_seconds = 0;
+            }
+        }
+    }
+
+    fn maybe_send_friction_notification(&mut self) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        if state.friction_response_pending.is_some() {
+            return;
+        }
+
+        if state.friction_consecutive_seconds < self.distraction_config.friction_delay_seconds {
+            return;
+        }
+
+        let Some(ref app) = state.current_friction_app else {
+            return;
+        };
+
+        let is_escalated = state.friction_reminder_count >= 1;
+
+        let receiver = if is_escalated {
+            self.notifier.send_friction_escalated(app.clone())
+        } else {
+            self.notifier
+                .send_friction_reminder(app.clone(), state.friction_consecutive_seconds)
+        };
+
+        state.friction_response_pending = Some(receiver);
+        state.friction_reminder_count += 1;
+        state.friction_consecutive_seconds = 0;
+
+        debug!(
+            app,
+            escalated = is_escalated,
+            reminder_count = state.friction_reminder_count,
+            "friction notification sent"
         );
     }
 
@@ -539,6 +654,8 @@ mod tests {
             apps: HashSet::from(["discord".to_string(), "slack".to_string()]),
             alert_enabled: false,
             alert_after_seconds: 30,
+            friction_apps: HashSet::new(),
+            friction_delay_seconds: 10,
         }
     }
 
@@ -593,6 +710,10 @@ mod tests {
             app_consecutive_seconds: 0,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.handle_message(AppTrackerMessage::Ended);
@@ -622,6 +743,10 @@ mod tests {
             app_consecutive_seconds: 0,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.track_distraction("Discord");
@@ -663,6 +788,10 @@ mod tests {
             app_consecutive_seconds: 0,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.track_distraction("cursor");
@@ -694,6 +823,10 @@ mod tests {
             app_consecutive_seconds: 0,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.track_distraction("Slack");
@@ -728,6 +861,10 @@ mod tests {
             app_consecutive_seconds: 60,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.track_context_switch("cursor");
@@ -759,6 +896,10 @@ mod tests {
             app_consecutive_seconds: 10,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.track_context_switch("cursor");
@@ -789,6 +930,10 @@ mod tests {
             app_consecutive_seconds: 120,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.track_context_switch("cursor");
@@ -819,6 +964,10 @@ mod tests {
             app_consecutive_seconds: 30,
             short_burst_count: HashMap::new(),
             context_switch_count: 0,
+            current_friction_app: None,
+            friction_consecutive_seconds: 0,
+            friction_reminder_count: 0,
+            friction_response_pending: None,
         });
 
         actor.track_context_switch("cursor");

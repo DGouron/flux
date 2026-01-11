@@ -100,6 +100,8 @@ pub struct DistractionConfig {
     pub apps: HashSet<String>,
     pub alert_enabled: bool,
     pub alert_after_seconds: u64,
+    pub friction_apps: HashSet<String>,
+    pub friction_delay_seconds: u64,
 }
 
 impl Default for DistractionConfig {
@@ -116,6 +118,8 @@ impl Default for DistractionConfig {
             ]),
             alert_enabled: false,
             alert_after_seconds: 30,
+            friction_apps: HashSet::new(),
+            friction_delay_seconds: 10,
         }
     }
 }
@@ -124,6 +128,11 @@ impl DistractionConfig {
     pub fn is_distraction(&self, application_name: &str) -> bool {
         let lowercase = application_name.to_lowercase();
         self.apps.iter().any(|app| lowercase.contains(app))
+    }
+
+    pub fn is_friction(&self, application_name: &str) -> bool {
+        let lowercase = application_name.to_lowercase();
+        self.friction_apps.iter().any(|app| lowercase.contains(app))
     }
 
     pub fn add_app(&mut self, app: &str) -> bool {

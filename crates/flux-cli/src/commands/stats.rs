@@ -441,6 +441,8 @@ mod tests {
             apps: HashSet::from(["discord".to_string(), "slack".to_string()]),
             alert_enabled: false,
             alert_after_seconds: 30,
+            friction_apps: HashSet::new(),
+            friction_delay_seconds: 10,
         }
     }
 }

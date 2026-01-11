@@ -15,6 +15,13 @@ pub enum CheckInResponse {
     NotFocused,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrictionResponse {
+    Continue,
+    BackToWork,
+    StopSession,
+}
+
 pub enum NotifierMessage {
     CheckIn {
         percent: u8,
@@ -35,6 +42,15 @@ pub enum NotifierMessage {
     DistractionAlert {
         title: String,
         body: String,
+    },
+    FrictionReminder {
+        app: String,
+        seconds: u64,
+        response_sender: oneshot::Sender<FrictionResponse>,
+    },
+    FrictionEscalated {
+        app: String,
+        response_sender: oneshot::Sender<FrictionResponse>,
     },
 }
 
@@ -123,6 +139,45 @@ impl NotifierHandle {
             }
         });
     }
+
+    pub fn send_friction_reminder(
+        &self,
+        app: String,
+        seconds: u64,
+    ) -> oneshot::Receiver<FrictionResponse> {
+        let (response_sender, response_receiver) = oneshot::channel();
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender
+                .send(NotifierMessage::FrictionReminder {
+                    app,
+                    seconds,
+                    response_sender,
+                })
+                .await
+            {
+                error!(%error, "failed to send friction reminder notification message");
+            }
+        });
+        response_receiver
+    }
+
+    pub fn send_friction_escalated(&self, app: String) -> oneshot::Receiver<FrictionResponse> {
+        let (response_sender, response_receiver) = oneshot::channel();
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender
+                .send(NotifierMessage::FrictionEscalated {
+                    app,
+                    response_sender,
+                })
+                .await
+            {
+                error!(%error, "failed to send friction escalated notification message");
+            }
+        });
+        response_receiver
+    }
 }
 
 pub struct NotifierActor {
@@ -180,6 +235,19 @@ impl NotifierActor {
                 }
                 NotifierMessage::DistractionAlert { title, body } => {
                     self.send_distraction_alert_notification(&title, &body);
+                }
+                NotifierMessage::FrictionReminder {
+                    app,
+                    seconds,
+                    response_sender,
+                } => {
+                    self.send_friction_reminder_notification(&app, seconds, response_sender);
+                }
+                NotifierMessage::FrictionEscalated {
+                    app,
+                    response_sender,
+                } => {
+                    self.send_friction_escalated_notification(&app, response_sender);
                 }
             }
         }
@@ -363,6 +431,83 @@ impl NotifierActor {
         }
 
         notification
+    }
+
+    fn send_friction_reminder_notification(
+        &self,
+        app: &str,
+        seconds: u64,
+        response_sender: oneshot::Sender<FrictionResponse>,
+    ) {
+        let translator = self.get_translator();
+        let title = format!("Flux - {}", translator.get("notification.friction_title"));
+        let body = translator.format(
+            "notification.friction_body",
+            &[("app", app), ("seconds", &seconds.to_string())],
+        );
+        let yes_label = translator.get("notification.friction_yes");
+        let no_label = translator.get("notification.friction_no");
+
+        let mut notification = self.build_notification(&title, &body);
+        notification
+            .action("continue", &yes_label)
+            .action("back", &no_label)
+            .timeout(60000);
+
+        tokio::task::spawn_blocking(move || match notification.show() {
+            Ok(handle) => {
+                let mut response = FrictionResponse::Continue;
+                handle.wait_for_action(|action| {
+                    response = match action {
+                        "back" => FrictionResponse::BackToWork,
+                        _ => FrictionResponse::Continue,
+                    };
+                });
+                let _ = response_sender.send(response);
+            }
+            Err(error) => {
+                warn!(%error, "failed to show friction reminder notification");
+                let _ = response_sender.send(FrictionResponse::Continue);
+            }
+        });
+    }
+
+    fn send_friction_escalated_notification(
+        &self,
+        app: &str,
+        response_sender: oneshot::Sender<FrictionResponse>,
+    ) {
+        let translator = self.get_translator();
+        let title = format!(
+            "Flux - {}",
+            translator.get("notification.friction_escalated_title")
+        );
+        let body = translator.format("notification.friction_escalated_body", &[("app", app)]);
+        let continue_label = translator.get("notification.friction_no_continue");
+        let stop_label = translator.get("notification.friction_yes_stop");
+
+        let mut notification = self.build_notification(&title, &body);
+        notification
+            .action("continue", &continue_label)
+            .action("stop", &stop_label)
+            .timeout(60000);
+
+        tokio::task::spawn_blocking(move || match notification.show() {
+            Ok(handle) => {
+                let mut response = FrictionResponse::Continue;
+                handle.wait_for_action(|action| {
+                    response = match action {
+                        "stop" => FrictionResponse::StopSession,
+                        _ => FrictionResponse::Continue,
+                    };
+                });
+                let _ = response_sender.send(response);
+            }
+            Err(error) => {
+                warn!(%error, "failed to show friction escalated notification");
+                let _ = response_sender.send(FrictionResponse::Continue);
+            }
+        });
     }
 }
 
