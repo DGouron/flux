@@ -67,7 +67,7 @@ impl AppTrackerHandle {
     }
 }
 
-const SHORT_BURST_THRESHOLD_SECONDS: u64 = 30;
+const SHORT_BURST_THRESHOLD_SECONDS: u64 = 15;
 
 struct TrackerState {
     session_id: SessionId,
