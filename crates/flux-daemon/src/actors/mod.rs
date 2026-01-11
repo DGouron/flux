@@ -5,7 +5,7 @@ mod timer;
 mod tray;
 
 pub use app_tracker::{AppTrackerActor, AppTrackerHandle};
-pub use notifier::{NotifierActor, NotifierHandle};
+pub use notifier::{CheckInResponse, NotifierActor, NotifierHandle};
 pub use timer::{TimerActor, TimerHandle};
 #[cfg(target_os = "linux")]
 pub use tray::{

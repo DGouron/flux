@@ -12,7 +12,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, error, info, instrument};
 
 const DEFAULT_DURATION_MINUTES: u64 = 25;
-const DEFAULT_CHECK_IN_MINUTES: u64 = 25;
 
 pub struct Server {
     socket_path: PathBuf,
@@ -187,11 +186,7 @@ async fn handle_request(
             let focus_mode = mode.unwrap_or(FocusMode::Prompting);
 
             if timer_handle
-                .start(
-                    Duration::from_secs(duration_minutes * 60),
-                    focus_mode,
-                    Duration::from_secs(DEFAULT_CHECK_IN_MINUTES * 60),
-                )
+                .start(Duration::from_secs(duration_minutes * 60), focus_mode)
                 .await
                 .is_ok()
             {
