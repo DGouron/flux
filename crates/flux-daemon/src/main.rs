@@ -66,7 +66,11 @@ async fn main() -> Result<()> {
     let app_tracking_repository = create_app_tracking_repository();
 
     let app_tracker_handle = if let Some(repository) = app_tracking_repository {
-        let (app_tracker_actor, handle) = AppTrackerActor::new(repository);
+        let (app_tracker_actor, handle) = AppTrackerActor::new(
+            repository,
+            config.distractions.clone(),
+            notifier_handle.clone(),
+        );
         tokio::spawn(app_tracker_actor.run());
         Some(handle)
     } else {

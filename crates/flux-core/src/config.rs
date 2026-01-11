@@ -1,5 +1,6 @@
 use crate::i18n::Language;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -28,6 +29,7 @@ pub struct Config {
     pub focus: FocusConfig,
     pub notifications: NotificationConfig,
     pub tray: TrayConfig,
+    pub distractions: DistractionConfig,
     pub gitlab: Option<ProviderConfig>,
     pub github: Option<ProviderConfig>,
 }
@@ -92,6 +94,39 @@ pub struct TrayConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct DistractionConfig {
+    pub apps: HashSet<String>,
+    pub alert_enabled: bool,
+    pub alert_after_seconds: u64,
+}
+
+impl Default for DistractionConfig {
+    fn default() -> Self {
+        Self {
+            apps: HashSet::from([
+                "discord".to_string(),
+                "slack".to_string(),
+                "telegram".to_string(),
+                "whatsapp".to_string(),
+                "twitter".to_string(),
+                "youtube".to_string(),
+                "reddit".to_string(),
+            ]),
+            alert_enabled: false,
+            alert_after_seconds: 30,
+        }
+    }
+}
+
+impl DistractionConfig {
+    pub fn is_distraction(&self, application_name: &str) -> bool {
+        let lowercase = application_name.to_lowercase();
+        self.apps.iter().any(|app| lowercase.contains(app))
+    }
+}
+
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         let path = Self::config_path();
@@ -127,6 +162,9 @@ mod tests {
         assert_eq!(config.focus.check_in_timeout_seconds, 120);
         assert!(config.notifications.sound_enabled);
         assert!(!config.tray.enabled);
+        assert!(!config.distractions.alert_enabled);
+        assert_eq!(config.distractions.alert_after_seconds, 30);
+        assert!(config.distractions.apps.contains("discord"));
         assert!(config.gitlab.is_none());
         assert!(config.github.is_none());
     }
@@ -216,5 +254,50 @@ mod tests {
         let config: Config = toml::from_str(toml).unwrap();
 
         assert_eq!(config.general.language, Language::En);
+    }
+
+    #[test]
+    fn parse_distractions_config() {
+        let toml = r#"
+            [distractions]
+            apps = ["discord", "slack", "twitter"]
+            alert_enabled = true
+            alert_after_seconds = 60
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert!(config.distractions.alert_enabled);
+        assert_eq!(config.distractions.alert_after_seconds, 60);
+        assert_eq!(config.distractions.apps.len(), 3);
+        assert!(config.distractions.apps.contains("discord"));
+        assert!(config.distractions.apps.contains("slack"));
+    }
+
+    #[test]
+    fn is_distraction_matches_case_insensitive() {
+        let config = DistractionConfig::default();
+
+        assert!(config.is_distraction("Discord"));
+        assert!(config.is_distraction("DISCORD"));
+        assert!(config.is_distraction("discord"));
+    }
+
+    #[test]
+    fn is_distraction_matches_partial_name() {
+        let config = DistractionConfig::default();
+
+        assert!(config.is_distraction("Discord-canary"));
+        assert!(config.is_distraction("org.telegram.desktop"));
+        assert!(config.is_distraction("youtube-music"));
+    }
+
+    #[test]
+    fn is_distraction_returns_false_for_non_distraction() {
+        let config = DistractionConfig::default();
+
+        assert!(!config.is_distraction("cursor"));
+        assert!(!config.is_distraction("firefox"));
+        assert!(!config.is_distraction("code"));
     }
 }

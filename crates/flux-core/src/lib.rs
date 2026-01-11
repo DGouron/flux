@@ -10,8 +10,8 @@ pub mod ports;
 pub mod secrets;
 
 pub use config::{
-    Config, ConfigError, FocusConfig, GeneralConfig, NotificationConfig, NotificationUrgency,
-    TrayConfig,
+    Config, ConfigError, DistractionConfig, FocusConfig, GeneralConfig, NotificationConfig,
+    NotificationUrgency, TrayConfig,
 };
 pub use domain::{AppUsage, FocusMode, Provider, ReviewAction, ReviewEvent, Session, SessionId};
 pub use i18n::{Language, Translator, UnsupportedLanguageError};

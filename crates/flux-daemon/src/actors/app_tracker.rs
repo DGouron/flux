@@ -5,7 +5,11 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
-use flux_core::{AppTrackingRepository, AppUsage, SessionId};
+use flux_core::{
+    AppTrackingRepository, AppUsage, Config, DistractionConfig, SessionId, Translator,
+};
+
+use super::NotifierHandle;
 
 #[cfg(target_os = "linux")]
 use crate::window::{WindowDetector, X11WindowDetector};
@@ -66,11 +70,16 @@ struct TrackerState {
     session_id: SessionId,
     paused: bool,
     accumulated: HashMap<String, i64>,
+    current_distraction: Option<String>,
+    distraction_consecutive_seconds: u64,
+    distraction_alert_sent: bool,
 }
 
 pub struct AppTrackerActor {
     receiver: mpsc::Receiver<AppTrackerMessage>,
     repository: Arc<dyn AppTrackingRepository>,
+    distraction_config: DistractionConfig,
+    notifier: NotifierHandle,
     #[cfg(target_os = "linux")]
     detector: Option<X11WindowDetector>,
     state: Option<TrackerState>,
@@ -78,7 +87,11 @@ pub struct AppTrackerActor {
 
 impl AppTrackerActor {
     #[cfg(target_os = "linux")]
-    pub fn new(repository: Arc<dyn AppTrackingRepository>) -> (Self, AppTrackerHandle) {
+    pub fn new(
+        repository: Arc<dyn AppTrackingRepository>,
+        distraction_config: DistractionConfig,
+        notifier: NotifierHandle,
+    ) -> (Self, AppTrackerHandle) {
         let (sender, receiver) = mpsc::channel(32);
 
         let detector = X11WindowDetector::new();
@@ -89,6 +102,8 @@ impl AppTrackerActor {
         let actor = Self {
             receiver,
             repository,
+            distraction_config,
+            notifier,
             detector,
             state: None,
         };
@@ -99,12 +114,18 @@ impl AppTrackerActor {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub fn new(repository: Arc<dyn AppTrackingRepository>) -> (Self, AppTrackerHandle) {
+    pub fn new(
+        repository: Arc<dyn AppTrackingRepository>,
+        distraction_config: DistractionConfig,
+        notifier: NotifierHandle,
+    ) -> (Self, AppTrackerHandle) {
         let (sender, receiver) = mpsc::channel(32);
 
         let actor = Self {
             receiver,
             repository,
+            distraction_config,
+            notifier,
             state: None,
         };
 
@@ -142,6 +163,9 @@ impl AppTrackerActor {
                     session_id,
                     paused: false,
                     accumulated: HashMap::new(),
+                    current_distraction: None,
+                    distraction_consecutive_seconds: 0,
+                    distraction_alert_sent: false,
                 });
             }
             AppTrackerMessage::Ended => {
@@ -158,6 +182,9 @@ impl AppTrackerActor {
                     state.paused = true;
                     Self::flush_to_repository(&self.repository, &state);
                     state.accumulated.clear();
+                    state.current_distraction = None;
+                    state.distraction_consecutive_seconds = 0;
+                    state.distraction_alert_sent = false;
                     self.state = Some(state);
                     debug!("app tracking paused");
                 }
@@ -185,11 +212,97 @@ impl AppTrackerActor {
             return;
         };
 
-        if let Some(application_name) = detector.get_active_application() {
-            trace!(application_name = %application_name, "tracking active window");
-            *state.accumulated.entry(application_name).or_insert(0) +=
-                POLLING_INTERVAL_SECONDS as i64;
+        let Some(application_name) = detector.get_active_application() else {
+            return;
+        };
+
+        trace!(application_name = %application_name, "tracking active window");
+        *state
+            .accumulated
+            .entry(application_name.clone())
+            .or_insert(0) += POLLING_INTERVAL_SECONDS as i64;
+
+        self.track_distraction(&application_name);
+    }
+
+    fn track_distraction(&mut self, application_name: &str) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        let is_distraction = self.distraction_config.is_distraction(application_name);
+
+        if is_distraction {
+            let same_distraction = state
+                .current_distraction
+                .as_ref()
+                .map(|current| current == application_name)
+                .unwrap_or(false);
+
+            if same_distraction {
+                state.distraction_consecutive_seconds += POLLING_INTERVAL_SECONDS;
+            } else {
+                state.current_distraction = Some(application_name.to_string());
+                state.distraction_consecutive_seconds = POLLING_INTERVAL_SECONDS;
+                state.distraction_alert_sent = false;
+            }
+
+            self.maybe_send_distraction_alert();
+        } else {
+            state.current_distraction = None;
+            state.distraction_consecutive_seconds = 0;
+            state.distraction_alert_sent = false;
         }
+    }
+
+    fn maybe_send_distraction_alert(&mut self) {
+        if !self.distraction_config.alert_enabled {
+            return;
+        }
+
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        if state.distraction_alert_sent {
+            return;
+        }
+
+        if state.distraction_consecutive_seconds < self.distraction_config.alert_after_seconds {
+            return;
+        }
+
+        let Some(ref app) = state.current_distraction else {
+            return;
+        };
+
+        let translator = Config::load()
+            .map(|config| Translator::new(config.general.language))
+            .unwrap_or_default();
+
+        let title = format!(
+            "Flux - {}",
+            translator.get("notification.distraction_alert_title")
+        );
+        let body = translator.format(
+            "notification.distraction_alert_body",
+            &[
+                ("app", app),
+                (
+                    "seconds",
+                    &state.distraction_consecutive_seconds.to_string(),
+                ),
+            ],
+        );
+
+        self.notifier.send_alert(title, body);
+        state.distraction_alert_sent = true;
+
+        debug!(
+            app,
+            seconds = state.distraction_consecutive_seconds,
+            "distraction alert sent"
+        );
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -219,7 +332,8 @@ impl AppTrackerActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flux_core::AppTrackingRepositoryError;
+    use flux_core::{AppTrackingRepositoryError, NotificationUrgency};
+    use std::collections::HashSet;
     use std::sync::Mutex;
 
     struct MockRepository {
@@ -262,10 +376,27 @@ mod tests {
         }
     }
 
+    fn create_test_notifier() -> NotifierHandle {
+        let (_, handle) = super::super::NotifierActor::new(NotificationUrgency::Normal, false);
+        handle
+    }
+
+    fn create_test_distraction_config() -> DistractionConfig {
+        DistractionConfig {
+            apps: HashSet::from(["discord".to_string(), "slack".to_string()]),
+            alert_enabled: false,
+            alert_after_seconds: 30,
+        }
+    }
+
     #[tokio::test]
     async fn handle_can_send_messages() {
         let repository = Arc::new(MockRepository::new());
-        let (actor, handle) = AppTrackerActor::new(repository);
+        let (actor, handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
 
         let actor_task = tokio::spawn(async move {
             tokio::time::timeout(Duration::from_millis(100), actor.run()).await
@@ -286,17 +417,115 @@ mod tests {
     async fn session_end_flushes_accumulated_data() {
         let repository = Arc::new(MockRepository::new());
         let repository_clone = repository.clone();
-        let (mut actor, _handle) = AppTrackerActor::new(repository);
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
 
         actor.state = Some(TrackerState {
             session_id: 42,
             paused: false,
             accumulated: HashMap::from([("cursor".to_string(), 100), ("firefox".to_string(), 50)]),
+            current_distraction: None,
+            distraction_consecutive_seconds: 0,
+            distraction_alert_sent: false,
         });
 
         actor.handle_message(AppTrackerMessage::Ended);
 
         let saved = repository_clone.saved.lock().unwrap();
         assert_eq!(saved.len(), 2);
+    }
+
+    #[test]
+    fn track_distraction_increments_consecutive_seconds() {
+        let repository = Arc::new(MockRepository::new());
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
+
+        actor.state = Some(TrackerState {
+            session_id: 1,
+            paused: false,
+            accumulated: HashMap::new(),
+            current_distraction: None,
+            distraction_consecutive_seconds: 0,
+            distraction_alert_sent: false,
+        });
+
+        actor.track_distraction("Discord");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(state.current_distraction, Some("Discord".to_string()));
+        assert_eq!(
+            state.distraction_consecutive_seconds,
+            POLLING_INTERVAL_SECONDS
+        );
+
+        actor.track_distraction("Discord");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(
+            state.distraction_consecutive_seconds,
+            POLLING_INTERVAL_SECONDS * 2
+        );
+    }
+
+    #[test]
+    fn track_distraction_resets_when_switching_apps() {
+        let repository = Arc::new(MockRepository::new());
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
+
+        actor.state = Some(TrackerState {
+            session_id: 1,
+            paused: false,
+            accumulated: HashMap::new(),
+            current_distraction: Some("Discord".to_string()),
+            distraction_consecutive_seconds: 60,
+            distraction_alert_sent: true,
+        });
+
+        actor.track_distraction("cursor");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(state.current_distraction, None);
+        assert_eq!(state.distraction_consecutive_seconds, 0);
+        assert!(!state.distraction_alert_sent);
+    }
+
+    #[test]
+    fn track_distraction_resets_when_switching_distractions() {
+        let repository = Arc::new(MockRepository::new());
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
+
+        actor.state = Some(TrackerState {
+            session_id: 1,
+            paused: false,
+            accumulated: HashMap::new(),
+            current_distraction: Some("Discord".to_string()),
+            distraction_consecutive_seconds: 60,
+            distraction_alert_sent: true,
+        });
+
+        actor.track_distraction("Slack");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(state.current_distraction, Some("Slack".to_string()));
+        assert_eq!(
+            state.distraction_consecutive_seconds,
+            POLLING_INTERVAL_SECONDS
+        );
+        assert!(!state.distraction_alert_sent);
     }
 }
