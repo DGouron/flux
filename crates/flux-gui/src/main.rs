@@ -3,6 +3,7 @@ use eframe::egui;
 use tracing::info;
 
 mod app;
+pub mod client;
 mod data;
 mod theme;
 mod views;

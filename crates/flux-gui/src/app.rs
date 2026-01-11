@@ -3,6 +3,7 @@ use eframe::egui::{self, Rounding, ScrollArea};
 use crate::data::{Period, Stats, StatsData};
 use crate::theme::Theme;
 use crate::views;
+use crate::views::session_control::{SessionController, StartSessionForm};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
@@ -18,11 +19,23 @@ pub struct FluxApp {
     theme: Theme,
     theme_applied: bool,
     show_clear_modal: bool,
+    #[allow(dead_code)]
+    runtime: tokio::runtime::Runtime,
+    session_controller: SessionController,
+    session_form: StartSessionForm,
 }
 
 impl FluxApp {
     pub fn new(data: StatsData) -> Self {
         let current_stats = data.stats_for_period(Period::Today);
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("failed to create tokio runtime");
+
+        let session_controller = SessionController::new(runtime.handle());
 
         Self {
             data,
@@ -32,6 +45,9 @@ impl FluxApp {
             theme: Theme::dark(),
             theme_applied: false,
             show_clear_modal: false,
+            runtime,
+            session_controller,
+            session_form: StartSessionForm::default(),
         }
     }
 
@@ -46,6 +62,8 @@ impl eframe::App for FluxApp {
             self.theme.apply(ctx);
             self.theme_applied = true;
         }
+
+        self.session_controller.poll(ctx);
 
         let panel_frame = egui::Frame::none()
             .fill(self.theme.colors.background)
@@ -142,7 +160,17 @@ impl FluxApp {
         });
     }
 
-    fn render_overview(&self, ui: &mut egui::Ui) {
+    fn render_overview(&mut self, ui: &mut egui::Ui) {
+        views::session_control::render_session_control(
+            ui,
+            &mut self.session_controller,
+            &mut self.session_form,
+            &self.data.translator,
+            &self.theme,
+        );
+
+        ui.add_space(self.theme.spacing.lg);
+
         if self.data.has_sessions() {
             views::overview::render_stats_cards(
                 ui,
