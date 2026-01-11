@@ -87,7 +87,9 @@ paused = "Session paused"
 
 [notification]
 check_in_title = "Focus Check-in"
-check_in_body = "{minutes}min elapsed. Still focused?"
+check_in_body = "{percent}% completed. Still focused?"
+check_in_yes = "Yes"
+check_in_no = "No"
 session_start_title = "Session Started"
 session_start_body = "{duration}min focus session started. Stay focused!"
 session_end_title = "Session Complete"
@@ -96,6 +98,8 @@ paused_title = "Paused"
 paused_body = "Session paused"
 resumed_title = "Resumed"
 resumed_body = "Session resumed. Stay focused!"
+distraction_alert_title = "Distraction Alert"
+distraction_alert_body = "You've been on {app} for {seconds}s"
 
 [gui]
 tab_overview = "Overview"
