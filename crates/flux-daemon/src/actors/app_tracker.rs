@@ -6,7 +6,8 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
 use flux_core::{
-    AppTrackingRepository, AppUsage, Config, DistractionConfig, SessionId, Translator,
+    AppTrackingRepository, AppUsage, Config, DistractionConfig, SessionId, SuggestionReport,
+    Translator,
 };
 
 use super::NotifierHandle;
@@ -66,6 +67,8 @@ impl AppTrackerHandle {
     }
 }
 
+const SHORT_BURST_THRESHOLD_SECONDS: u64 = 30;
+
 struct TrackerState {
     session_id: SessionId,
     paused: bool,
@@ -73,6 +76,10 @@ struct TrackerState {
     current_distraction: Option<String>,
     distraction_consecutive_seconds: u64,
     distraction_alert_sent: bool,
+    last_app: Option<String>,
+    app_consecutive_seconds: u64,
+    short_burst_count: HashMap<String, u32>,
+    context_switch_count: u32,
 }
 
 pub struct AppTrackerActor {
@@ -166,11 +173,16 @@ impl AppTrackerActor {
                     current_distraction: None,
                     distraction_consecutive_seconds: 0,
                     distraction_alert_sent: false,
+                    last_app: None,
+                    app_consecutive_seconds: 0,
+                    short_burst_count: HashMap::new(),
+                    context_switch_count: 0,
                 });
             }
             AppTrackerMessage::Ended => {
                 if let Some(state) = self.state.take() {
                     Self::flush_to_repository(&self.repository, &state);
+                    self.generate_suggestions(&state);
                     debug!(
                         session_id = state.session_id,
                         "app tracking ended for session"
@@ -185,6 +197,8 @@ impl AppTrackerActor {
                     state.current_distraction = None;
                     state.distraction_consecutive_seconds = 0;
                     state.distraction_alert_sent = false;
+                    state.last_app = None;
+                    state.app_consecutive_seconds = 0;
                     self.state = Some(state);
                     debug!("app tracking paused");
                 }
@@ -222,7 +236,46 @@ impl AppTrackerActor {
             .entry(application_name.clone())
             .or_insert(0) += POLLING_INTERVAL_SECONDS as i64;
 
+        self.track_context_switch(&application_name);
         self.track_distraction(&application_name);
+    }
+
+    fn track_context_switch(&mut self, application_name: &str) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        let is_same_app = state
+            .last_app
+            .as_ref()
+            .map(|last| last == application_name)
+            .unwrap_or(false);
+
+        if is_same_app {
+            state.app_consecutive_seconds += POLLING_INTERVAL_SECONDS;
+        } else {
+            if let Some(ref previous_app) = state.last_app {
+                state.context_switch_count += 1;
+
+                if state.app_consecutive_seconds > 0
+                    && state.app_consecutive_seconds < SHORT_BURST_THRESHOLD_SECONDS
+                {
+                    *state
+                        .short_burst_count
+                        .entry(previous_app.clone())
+                        .or_insert(0) += 1;
+
+                    trace!(
+                        previous_app,
+                        seconds = state.app_consecutive_seconds,
+                        "short burst detected"
+                    );
+                }
+            }
+
+            state.last_app = Some(application_name.to_string());
+            state.app_consecutive_seconds = POLLING_INTERVAL_SECONDS;
+        }
     }
 
     fn track_distraction(&mut self, application_name: &str) {
@@ -308,6 +361,38 @@ impl AppTrackerActor {
     #[cfg(not(target_os = "linux"))]
     fn poll_active_window(&mut self) {
         // No-op on non-Linux platforms
+    }
+
+    fn generate_suggestions(&self, state: &TrackerState) {
+        if state.short_burst_count.is_empty() {
+            return;
+        }
+
+        let report = SuggestionReport::from_session_data(
+            state.session_id,
+            &state.short_burst_count,
+            state.context_switch_count,
+            &self.distraction_config.apps,
+        );
+
+        if report.suggestions.is_empty() {
+            debug!("no suggestions generated for session");
+            return;
+        }
+
+        match report.save() {
+            Ok(path) => {
+                info!(
+                    suggestions_count = report.suggestions.len(),
+                    context_switches = state.context_switch_count,
+                    path = %path.display(),
+                    "suggestions saved"
+                );
+            }
+            Err(error) => {
+                warn!(%error, "failed to save suggestions");
+            }
+        }
     }
 
     fn flush_to_repository(repository: &Arc<dyn AppTrackingRepository>, state: &TrackerState) {
@@ -430,6 +515,10 @@ mod tests {
             current_distraction: None,
             distraction_consecutive_seconds: 0,
             distraction_alert_sent: false,
+            last_app: None,
+            app_consecutive_seconds: 0,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
         });
 
         actor.handle_message(AppTrackerMessage::Ended);
@@ -454,6 +543,10 @@ mod tests {
             current_distraction: None,
             distraction_consecutive_seconds: 0,
             distraction_alert_sent: false,
+            last_app: None,
+            app_consecutive_seconds: 0,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
         });
 
         actor.track_distraction("Discord");
@@ -490,6 +583,10 @@ mod tests {
             current_distraction: Some("Discord".to_string()),
             distraction_consecutive_seconds: 60,
             distraction_alert_sent: true,
+            last_app: None,
+            app_consecutive_seconds: 0,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
         });
 
         actor.track_distraction("cursor");
@@ -516,6 +613,10 @@ mod tests {
             current_distraction: Some("Discord".to_string()),
             distraction_consecutive_seconds: 60,
             distraction_alert_sent: true,
+            last_app: None,
+            app_consecutive_seconds: 0,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
         });
 
         actor.track_distraction("Slack");
@@ -527,5 +628,123 @@ mod tests {
             POLLING_INTERVAL_SECONDS
         );
         assert!(!state.distraction_alert_sent);
+    }
+
+    #[test]
+    fn track_context_switch_increments_count() {
+        let repository = Arc::new(MockRepository::new());
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
+
+        actor.state = Some(TrackerState {
+            session_id: 1,
+            paused: false,
+            accumulated: HashMap::new(),
+            current_distraction: None,
+            distraction_consecutive_seconds: 0,
+            distraction_alert_sent: false,
+            last_app: Some("firefox".to_string()),
+            app_consecutive_seconds: 60,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
+        });
+
+        actor.track_context_switch("cursor");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(state.context_switch_count, 1);
+        assert_eq!(state.last_app, Some("cursor".to_string()));
+        assert_eq!(state.app_consecutive_seconds, POLLING_INTERVAL_SECONDS);
+    }
+
+    #[test]
+    fn track_context_switch_detects_short_burst() {
+        let repository = Arc::new(MockRepository::new());
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
+
+        actor.state = Some(TrackerState {
+            session_id: 1,
+            paused: false,
+            accumulated: HashMap::new(),
+            current_distraction: None,
+            distraction_consecutive_seconds: 0,
+            distraction_alert_sent: false,
+            last_app: Some("discord".to_string()),
+            app_consecutive_seconds: 10,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
+        });
+
+        actor.track_context_switch("cursor");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(state.context_switch_count, 1);
+        assert_eq!(state.short_burst_count.get("discord"), Some(&1));
+    }
+
+    #[test]
+    fn track_context_switch_no_short_burst_when_long_duration() {
+        let repository = Arc::new(MockRepository::new());
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
+
+        actor.state = Some(TrackerState {
+            session_id: 1,
+            paused: false,
+            accumulated: HashMap::new(),
+            current_distraction: None,
+            distraction_consecutive_seconds: 0,
+            distraction_alert_sent: false,
+            last_app: Some("firefox".to_string()),
+            app_consecutive_seconds: 120,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
+        });
+
+        actor.track_context_switch("cursor");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(state.context_switch_count, 1);
+        assert!(state.short_burst_count.is_empty());
+    }
+
+    #[test]
+    fn track_context_switch_same_app_increments_duration() {
+        let repository = Arc::new(MockRepository::new());
+        let (mut actor, _handle) = AppTrackerActor::new(
+            repository,
+            create_test_distraction_config(),
+            create_test_notifier(),
+        );
+
+        actor.state = Some(TrackerState {
+            session_id: 1,
+            paused: false,
+            accumulated: HashMap::new(),
+            current_distraction: None,
+            distraction_consecutive_seconds: 0,
+            distraction_alert_sent: false,
+            last_app: Some("cursor".to_string()),
+            app_consecutive_seconds: 30,
+            short_burst_count: HashMap::new(),
+            context_switch_count: 0,
+        });
+
+        actor.track_context_switch("cursor");
+
+        let state = actor.state.as_ref().unwrap();
+        assert_eq!(state.context_switch_count, 0);
+        assert_eq!(state.app_consecutive_seconds, 30 + POLLING_INTERVAL_SECONDS);
+        assert!(state.short_burst_count.is_empty());
     }
 }

@@ -73,6 +73,14 @@ distractions_reset = "✅ Liste des distractions réinitialisée aux valeurs par
 # Dashboard command
 dashboard_launched = "📊 Dashboard ouvert"
 
+# Suggestions command
+suggestions_header = "🔍 Distractions détectées"
+suggestions_empty = "Aucune suggestion disponible. Terminez une session focus pour détecter des distractions potentielles."
+suggestions_reason_short_bursts = "{count} passages rapides"
+suggestions_context_switches = "📊 Changements de contexte cette session : {count}"
+suggestions_hint = "💡 Utilisez `flux distractions add <app>` pour ajouter une app à votre liste"
+suggestions_cleared = "✅ Suggestions effacées"
+
 # Clear command
 clear_confirm = "Supprimer {count} sessions ? Cette action est irréversible. [y/N]"
 clear_success = "🗑️  {count} sessions supprimées"

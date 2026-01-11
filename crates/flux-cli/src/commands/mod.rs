@@ -10,6 +10,7 @@ mod start;
 mod stats;
 mod status;
 mod stop;
+pub mod suggestions;
 mod update;
 
 pub use clear::execute as clear;

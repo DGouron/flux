@@ -13,7 +13,10 @@ pub use config::{
     Config, ConfigError, DistractionConfig, FocusConfig, GeneralConfig, NotificationConfig,
     NotificationUrgency, TrayConfig,
 };
-pub use domain::{AppUsage, FocusMode, Provider, ReviewAction, ReviewEvent, Session, SessionId};
+pub use domain::{
+    AppUsage, DistractionSuggestion, FocusMode, Provider, ReviewAction, ReviewEvent, Session,
+    SessionId, SuggestionReason, SuggestionReport,
+};
 pub use i18n::{Language, Translator, UnsupportedLanguageError};
 pub use ports::{
     AppTrackingRepository, AppTrackingRepositoryError, ReviewActivityGateway, ReviewGatewayError,

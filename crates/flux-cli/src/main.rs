@@ -77,6 +77,11 @@ enum Commands {
         #[command(subcommand)]
         action: DistractionsAction,
     },
+    /// Afficher les suggestions de distractions détectées
+    Suggestions {
+        #[command(subcommand)]
+        action: SuggestionsAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -95,6 +100,14 @@ enum DistractionsAction {
     },
     /// Réinitialiser la liste aux valeurs par défaut
     Reset,
+}
+
+#[derive(Subcommand)]
+enum SuggestionsAction {
+    /// Afficher les suggestions détectées
+    List,
+    /// Effacer les suggestions
+    Clear,
 }
 
 #[tokio::main]
@@ -128,6 +141,10 @@ async fn main() {
             DistractionsAction::Add { app } => commands::distractions::add(&app),
             DistractionsAction::Remove { app } => commands::distractions::remove(&app),
             DistractionsAction::Reset => commands::distractions::reset(),
+        },
+        Commands::Suggestions { action } => match action {
+            SuggestionsAction::List => commands::suggestions::list(),
+            SuggestionsAction::Clear => commands::suggestions::clear(),
         },
     };
 
