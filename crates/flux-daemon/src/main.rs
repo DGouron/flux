@@ -8,8 +8,10 @@ use std::sync::Arc;
 use actors::{check_for_updates, open_configuration, open_dashboard, spawn_tray, TrayAction};
 use actors::{AppTrackerActor, NotifierActor, TimerActor};
 use anyhow::Result;
-use flux_adapters::{SqliteAppTrackingRepository, SqliteSessionRepository};
-use flux_core::{AppTrackingRepository, Config, SessionRepository};
+use flux_adapters::{
+    SqliteAppTrackingRepository, SqliteSessionMetricsRepository, SqliteSessionRepository,
+};
+use flux_core::{AppTrackingRepository, Config, SessionMetricsRepository, SessionRepository};
 use server::Server;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
@@ -64,10 +66,14 @@ async fn main() -> Result<()> {
 
     let session_repository = create_session_repository();
     let app_tracking_repository = create_app_tracking_repository();
+    let session_metrics_repository = create_session_metrics_repository();
 
-    let app_tracker_handle = if let Some(repository) = app_tracking_repository {
+    let app_tracker_handle = if let (Some(repository), Some(metrics_repository)) =
+        (app_tracking_repository, session_metrics_repository)
+    {
         let (app_tracker_actor, handle) = AppTrackerActor::new(
             repository,
+            metrics_repository,
             config.distractions.clone(),
             notifier_handle.clone(),
         );
@@ -184,6 +190,28 @@ fn create_app_tracking_repository() -> Option<Arc<dyn AppTrackingRepository>> {
         }
         Err(error) => {
             warn!(%error, "failed to initialize app tracking repository");
+            None
+        }
+    }
+}
+
+fn create_session_metrics_repository() -> Option<Arc<dyn SessionMetricsRepository>> {
+    let data_dir = dirs::data_dir()?.join("flux");
+
+    if let Err(error) = std::fs::create_dir_all(&data_dir) {
+        warn!(%error, "failed to create data directory, session metrics will not be persisted");
+        return None;
+    }
+
+    let database_path = data_dir.join("sessions.db");
+
+    match SqliteSessionMetricsRepository::new(&database_path) {
+        Ok(repository) => {
+            info!("session metrics enabled");
+            Some(Arc::new(repository))
+        }
+        Err(error) => {
+            warn!(%error, "failed to initialize session metrics repository");
             None
         }
     }

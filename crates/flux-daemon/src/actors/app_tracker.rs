@@ -6,8 +6,8 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
 use flux_core::{
-    AppTrackingRepository, AppUsage, Config, DistractionConfig, SessionId, SuggestionReport,
-    Translator,
+    AppTrackingRepository, AppUsage, Config, DistractionConfig, SessionId, SessionMetrics,
+    SessionMetricsRepository, SuggestionReport, Translator,
 };
 
 use super::NotifierHandle;
@@ -85,6 +85,7 @@ struct TrackerState {
 pub struct AppTrackerActor {
     receiver: mpsc::Receiver<AppTrackerMessage>,
     repository: Arc<dyn AppTrackingRepository>,
+    metrics_repository: Arc<dyn SessionMetricsRepository>,
     distraction_config: DistractionConfig,
     notifier: NotifierHandle,
     #[cfg(target_os = "linux")]
@@ -96,6 +97,7 @@ impl AppTrackerActor {
     #[cfg(target_os = "linux")]
     pub fn new(
         repository: Arc<dyn AppTrackingRepository>,
+        metrics_repository: Arc<dyn SessionMetricsRepository>,
         distraction_config: DistractionConfig,
         notifier: NotifierHandle,
     ) -> (Self, AppTrackerHandle) {
@@ -109,6 +111,7 @@ impl AppTrackerActor {
         let actor = Self {
             receiver,
             repository,
+            metrics_repository,
             distraction_config,
             notifier,
             detector,
@@ -123,6 +126,7 @@ impl AppTrackerActor {
     #[cfg(not(target_os = "linux"))]
     pub fn new(
         repository: Arc<dyn AppTrackingRepository>,
+        metrics_repository: Arc<dyn SessionMetricsRepository>,
         distraction_config: DistractionConfig,
         notifier: NotifierHandle,
     ) -> (Self, AppTrackerHandle) {
@@ -131,6 +135,7 @@ impl AppTrackerActor {
         let actor = Self {
             receiver,
             repository,
+            metrics_repository,
             distraction_config,
             notifier,
             state: None,
@@ -182,6 +187,7 @@ impl AppTrackerActor {
             AppTrackerMessage::Ended => {
                 if let Some(state) = self.state.take() {
                     Self::flush_to_repository(&self.repository, &state);
+                    self.save_metrics(&state);
                     self.generate_suggestions(&state);
                     debug!(
                         session_id = state.session_id,
@@ -363,6 +369,26 @@ impl AppTrackerActor {
         // No-op on non-Linux platforms
     }
 
+    fn save_metrics(&self, state: &TrackerState) {
+        let metrics = SessionMetrics::new(
+            state.session_id,
+            state.context_switch_count,
+            state.short_burst_count.clone(),
+        );
+
+        if let Err(error) = self.metrics_repository.save(&metrics) {
+            warn!(%error, "failed to save session metrics");
+        } else {
+            debug!(
+                session_id = state.session_id,
+                context_switches = state.context_switch_count,
+                total_short_bursts = metrics.total_short_bursts,
+                focus_score = metrics.focus_score(),
+                "session metrics saved"
+            );
+        }
+    }
+
     fn generate_suggestions(&self, state: &TrackerState) {
         if state.short_burst_count.is_empty() {
             return;
@@ -417,7 +443,9 @@ impl AppTrackerActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flux_core::{AppTrackingRepositoryError, NotificationUrgency};
+    use flux_core::{
+        AppTrackingRepositoryError, NotificationUrgency, SessionMetricsRepositoryError,
+    };
     use std::collections::HashSet;
     use std::sync::Mutex;
 
@@ -430,6 +458,46 @@ mod tests {
             Self {
                 saved: Mutex::new(Vec::new()),
             }
+        }
+    }
+
+    struct MockMetricsRepository {
+        saved: Mutex<Vec<SessionMetrics>>,
+    }
+
+    impl MockMetricsRepository {
+        fn new() -> Self {
+            Self {
+                saved: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl SessionMetricsRepository for MockMetricsRepository {
+        fn save(&self, metrics: &SessionMetrics) -> Result<(), SessionMetricsRepositoryError> {
+            self.saved.lock().unwrap().push(metrics.clone());
+            Ok(())
+        }
+
+        fn find_by_session(
+            &self,
+            _session_id: SessionId,
+        ) -> Result<Option<SessionMetrics>, SessionMetricsRepositoryError> {
+            Ok(None)
+        }
+
+        fn find_by_sessions(
+            &self,
+            _session_ids: &[SessionId],
+        ) -> Result<Vec<SessionMetrics>, SessionMetricsRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        fn delete_by_session(
+            &self,
+            _session_id: SessionId,
+        ) -> Result<(), SessionMetricsRepositoryError> {
+            Ok(())
         }
     }
 
@@ -474,11 +542,16 @@ mod tests {
         }
     }
 
+    fn create_test_metrics_repository() -> Arc<MockMetricsRepository> {
+        Arc::new(MockMetricsRepository::new())
+    }
+
     #[tokio::test]
     async fn handle_can_send_messages() {
         let repository = Arc::new(MockRepository::new());
         let (actor, handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -504,6 +577,7 @@ mod tests {
         let repository_clone = repository.clone();
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -532,6 +606,7 @@ mod tests {
         let repository = Arc::new(MockRepository::new());
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -572,6 +647,7 @@ mod tests {
         let repository = Arc::new(MockRepository::new());
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -602,6 +678,7 @@ mod tests {
         let repository = Arc::new(MockRepository::new());
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -635,6 +712,7 @@ mod tests {
         let repository = Arc::new(MockRepository::new());
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -665,6 +743,7 @@ mod tests {
         let repository = Arc::new(MockRepository::new());
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -694,6 +773,7 @@ mod tests {
         let repository = Arc::new(MockRepository::new());
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );
@@ -723,6 +803,7 @@ mod tests {
         let repository = Arc::new(MockRepository::new());
         let (mut actor, _handle) = AppTrackerActor::new(
             repository,
+            create_test_metrics_repository(),
             create_test_distraction_config(),
             create_test_notifier(),
         );

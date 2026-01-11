@@ -61,6 +61,9 @@ stats_no_sessions = "No sessions for this period"
 stats_focus_apps = "Focus applications"
 stats_distractions = "Distractions"
 stats_time_lost = "of time lost"
+stats_focus_score = "Focus Score"
+stats_context_switches = "Context Switches"
+stats_short_bursts = "Short Bursts"
 
 # Distractions command
 distractions_current_list = "Configured distraction applications"

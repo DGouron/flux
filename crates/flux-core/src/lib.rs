@@ -15,12 +15,13 @@ pub use config::{
 };
 pub use domain::{
     AppUsage, DistractionSuggestion, FocusMode, Provider, ReviewAction, ReviewEvent, Session,
-    SessionId, SuggestionReason, SuggestionReport,
+    SessionId, SessionMetrics, SuggestionReason, SuggestionReport,
 };
 pub use i18n::{Language, Translator, UnsupportedLanguageError};
 pub use ports::{
     AppTrackingRepository, AppTrackingRepositoryError, ReviewActivityGateway, ReviewGatewayError,
-    SessionRepository, SessionRepositoryError,
+    SessionMetricsRepository, SessionMetricsRepositoryError, SessionRepository,
+    SessionRepositoryError,
 };
 pub use secrets::{
     resolve_github_credentials, resolve_gitlab_credentials, ProviderCredentials, SecretsError,

@@ -3,10 +3,12 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
-use flux_adapters::{SqliteAppTrackingRepository, SqliteSessionRepository};
+use flux_adapters::{
+    SqliteAppTrackingRepository, SqliteSessionMetricsRepository, SqliteSessionRepository,
+};
 use flux_core::{
-    AppTrackingRepository, AppUsage, Config, DistractionConfig, Session, SessionId,
-    SessionRepository, Translator,
+    AppTrackingRepository, AppUsage, Config, DistractionConfig, Session, SessionId, SessionMetrics,
+    SessionMetricsRepository, SessionRepository, Translator,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +43,10 @@ pub struct Stats {
     pub distraction_applications: HashMap<String, i64>,
     pub total_distraction_seconds: i64,
     pub total_check_ins: i32,
+    pub average_focus_score: Option<u8>,
+    pub total_context_switches: u32,
+    pub total_short_bursts: u32,
+    pub sessions_with_metrics: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +61,7 @@ pub struct StatsData {
     pub translator: Translator,
     pub sessions: Vec<Session>,
     pub app_usages: Vec<AppUsage>,
+    pub session_metrics: Vec<SessionMetrics>,
     pub distraction_config: DistractionConfig,
     database_path: Option<PathBuf>,
 }
@@ -68,7 +75,17 @@ impl StatsData {
             .iter()
             .filter(|u| session_ids.contains(&u.session_id))
             .collect();
-        compute_stats(&filtered, &filtered_usages, &self.distraction_config)
+        let filtered_metrics: Vec<&SessionMetrics> = self
+            .session_metrics
+            .iter()
+            .filter(|m| session_ids.contains(&m.session_id))
+            .collect();
+        compute_stats(
+            &filtered,
+            &filtered_usages,
+            &filtered_metrics,
+            &self.distraction_config,
+        )
     }
 
     pub fn sessions_for_period(&self, period: Period) -> Vec<&Session> {
@@ -149,9 +166,11 @@ impl StatsData {
         let (sessions, database_path) = load_all_sessions()?;
         let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
         let app_usages = load_app_usages(&session_ids, database_path.as_ref());
+        let session_metrics = load_session_metrics(&session_ids, database_path.as_ref());
 
         self.sessions = sessions;
         self.app_usages = app_usages;
+        self.session_metrics = session_metrics;
         self.database_path = database_path;
 
         Ok(())
@@ -166,11 +185,13 @@ pub fn load_initial_data() -> Result<StatsData> {
 
     let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
     let app_usages = load_app_usages(&session_ids, database_path.as_ref());
+    let session_metrics = load_session_metrics(&session_ids, database_path.as_ref());
 
     Ok(StatsData {
         translator,
         sessions,
         app_usages,
+        session_metrics,
         distraction_config,
         database_path,
     })
@@ -212,6 +233,22 @@ fn load_app_usages(session_ids: &[i64], database_path: Option<&PathBuf>) -> Vec<
     repository.find_by_sessions(session_ids).unwrap_or_default()
 }
 
+fn load_session_metrics(
+    session_ids: &[i64],
+    database_path: Option<&PathBuf>,
+) -> Vec<SessionMetrics> {
+    let Some(path) = database_path else {
+        return Vec::new();
+    };
+
+    let repository = match SqliteSessionMetricsRepository::new(path) {
+        Ok(repo) => repo,
+        Err(_) => return Vec::new(),
+    };
+
+    repository.find_by_sessions(session_ids).unwrap_or_default()
+}
+
 fn period_start(period: Period) -> DateTime<Utc> {
     match period {
         Period::Today => Local::now()
@@ -230,6 +267,7 @@ fn period_start(period: Period) -> DateTime<Utc> {
 fn compute_stats(
     sessions: &[&Session],
     app_usages: &[&AppUsage],
+    session_metrics: &[&SessionMetrics],
     distraction_config: &DistractionConfig,
 ) -> Stats {
     let mut total_seconds = 0i64;
@@ -262,6 +300,17 @@ fn compute_stats(
         }
     }
 
+    let (average_focus_score, total_context_switches, total_short_bursts) =
+        if session_metrics.is_empty() {
+            (None, 0, 0)
+        } else {
+            let sum_scores: u32 = session_metrics.iter().map(|m| m.focus_score() as u32).sum();
+            let average = (sum_scores / session_metrics.len() as u32) as u8;
+            let switches: u32 = session_metrics.iter().map(|m| m.context_switch_count).sum();
+            let bursts: u32 = session_metrics.iter().map(|m| m.total_short_bursts).sum();
+            (Some(average), switches, bursts)
+        };
+
     Stats {
         total_seconds,
         session_count: sessions.len(),
@@ -270,6 +319,10 @@ fn compute_stats(
         distraction_applications,
         total_distraction_seconds,
         total_check_ins,
+        average_focus_score,
+        total_context_switches,
+        total_short_bursts,
+        sessions_with_metrics: session_metrics.len(),
     }
 }
 
@@ -310,5 +363,9 @@ mod tests {
         assert!(stats.focus_applications.is_empty());
         assert!(stats.distraction_applications.is_empty());
         assert_eq!(stats.total_distraction_seconds, 0);
+        assert!(stats.average_focus_score.is_none());
+        assert_eq!(stats.total_context_switches, 0);
+        assert_eq!(stats.total_short_bursts, 0);
+        assert_eq!(stats.sessions_with_metrics, 0);
     }
 }
