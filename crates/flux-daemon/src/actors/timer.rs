@@ -8,20 +8,14 @@ use flux_core::{Config, FocusMode, Session, SessionRepository, Translator};
 
 #[cfg(target_os = "linux")]
 use super::TrayStateHandle;
-use super::{AppTrackerHandle, NotifierHandle};
+use super::{AppTrackerHandle, CheckInResponse, NotifierHandle};
 
 pub enum TimerMessage {
-    Start {
-        duration: Duration,
-        mode: FocusMode,
-        check_in_interval: Duration,
-    },
+    Start { duration: Duration, mode: FocusMode },
     Stop,
     Pause,
     Resume,
-    GetStatus {
-        reply: oneshot::Sender<TimerStatus>,
-    },
+    GetStatus { reply: oneshot::Sender<TimerStatus> },
 }
 
 #[derive(Debug, Clone)]
@@ -36,10 +30,12 @@ struct TimerState {
     mode: FocusMode,
     total_duration: Duration,
     remaining: Duration,
-    check_in_interval: Duration,
     last_tick: Instant,
     paused: bool,
+    check_ins_done: [bool; 3],
 }
+
+const CHECK_IN_THRESHOLDS: [u8; 3] = [25, 50, 75];
 
 pub struct TimerActor {
     receiver: mpsc::Receiver<TimerMessage>,
@@ -50,6 +46,7 @@ pub struct TimerActor {
     tray_state: Option<TrayStateHandle>,
     session_repository: Option<Arc<dyn SessionRepository>>,
     current_session: Option<Session>,
+    pending_check_in: Option<oneshot::Receiver<CheckInResponse>>,
 }
 
 #[derive(Clone)]
@@ -62,14 +59,9 @@ impl TimerHandle {
         &self,
         duration: Duration,
         mode: FocusMode,
-        check_in_interval: Duration,
     ) -> Result<(), mpsc::error::SendError<TimerMessage>> {
         self.sender
-            .send(TimerMessage::Start {
-                duration,
-                mode,
-                check_in_interval,
-            })
+            .send(TimerMessage::Start { duration, mode })
             .await
     }
 
@@ -115,6 +107,7 @@ impl TimerActor {
             tray_state,
             session_repository,
             current_session: None,
+            pending_check_in: None,
         };
 
         let handle = TimerHandle { sender };
@@ -137,21 +130,12 @@ impl TimerActor {
             app_tracker,
             session_repository,
             current_session: None,
+            pending_check_in: None,
         };
 
         let handle = TimerHandle { sender };
 
         (actor, handle)
-    }
-
-    fn elapsed_minutes(&self) -> u64 {
-        self.state
-            .as_ref()
-            .map(|state| {
-                let elapsed = state.total_duration.saturating_sub(state.remaining);
-                elapsed.as_secs() / 60
-            })
-            .unwrap_or(0)
     }
 
     fn total_minutes(&self) -> u64 {
@@ -268,26 +252,95 @@ impl TimerActor {
     #[cfg(not(target_os = "linux"))]
     fn update_tray_check_in(&self) {}
 
+    fn elapsed_percent(&self) -> u8 {
+        self.state
+            .as_ref()
+            .map(|state| {
+                let elapsed = state.total_duration.saturating_sub(state.remaining);
+                let percent = (elapsed.as_secs_f64() / state.total_duration.as_secs_f64()) * 100.0;
+                percent.min(100.0) as u8
+            })
+            .unwrap_or(0)
+    }
+
+    fn next_check_in_threshold(&self) -> Option<(usize, u8)> {
+        self.state.as_ref().and_then(|state| {
+            let current_percent = self.elapsed_percent();
+            CHECK_IN_THRESHOLDS
+                .iter()
+                .enumerate()
+                .find(|(index, &threshold)| {
+                    !state.check_ins_done[*index] && current_percent >= threshold
+                })
+                .map(|(index, &threshold)| (index, threshold))
+        })
+    }
+
+    fn mark_check_in_done(&mut self, index: usize) {
+        if let Some(ref mut state) = self.state {
+            state.check_ins_done[index] = true;
+        }
+    }
+
+    fn check_pending_check_in_response(&mut self) {
+        if let Some(ref mut receiver) = self.pending_check_in {
+            match receiver.try_recv() {
+                Ok(CheckInResponse::NotFocused) => {
+                    info!("check-in response: not focused, pausing session");
+                    self.pending_check_in = None;
+                    self.pause_session_internal();
+                }
+                Ok(CheckInResponse::Focused) => {
+                    debug!("check-in response: focused, continuing");
+                    self.pending_check_in = None;
+                }
+                Err(oneshot::error::TryRecvError::Empty) => {}
+                Err(oneshot::error::TryRecvError::Closed) => {
+                    debug!("check-in response channel closed, assuming focused");
+                    self.pending_check_in = None;
+                }
+            }
+        }
+    }
+
+    fn pause_session_internal(&mut self) {
+        if let Some(ref mut state) = self.state {
+            if !state.paused {
+                state.paused = true;
+                let remaining = state.remaining;
+                info!("session paused from check-in");
+
+                if let Some(ref app_tracker) = self.app_tracker {
+                    app_tracker.send_session_paused();
+                }
+
+                self.update_tray_paused(remaining);
+
+                if let Some(ref notifier) = self.notifier {
+                    notifier.send_session_paused();
+                }
+            }
+        }
+    }
+
     pub async fn run(mut self) {
         let mut tick_interval = tokio::time::interval(Duration::from_secs(1));
-        let mut time_since_check_in = Duration::ZERO;
 
         loop {
             tokio::select! {
                 Some(message) = self.receiver.recv() => {
                     match message {
-                        TimerMessage::Start { duration, mode, check_in_interval } => {
+                        TimerMessage::Start { duration, mode } => {
                             info!(?mode, ?duration, "session started");
                             let duration_minutes = duration.as_secs() / 60;
                             self.state = Some(TimerState {
                                 mode: mode.clone(),
                                 total_duration: duration,
                                 remaining: duration,
-                                check_in_interval,
                                 last_tick: Instant::now(),
                                 paused: false,
+                                check_ins_done: [false; 3],
                             });
-                            time_since_check_in = Duration::ZERO;
 
                             self.persist_new_session(mode.clone());
                             self.update_tray_active(duration, mode);
@@ -378,15 +431,11 @@ impl TimerActor {
 
                                 if state.remaining > elapsed {
                                     state.remaining -= elapsed;
-                                    time_since_check_in += elapsed;
-
                                     let remaining = state.remaining;
                                     let mode = state.mode.clone();
-                                    let needs_check_in = time_since_check_in >= state.check_in_interval;
-
-                                    Some((remaining, mode, needs_check_in, false))
+                                    Some((remaining, mode, false))
                                 } else {
-                                    Some((Duration::ZERO, state.mode.clone(), false, true))
+                                    Some((Duration::ZERO, state.mode.clone(), true))
                                 }
                             }
                         } else {
@@ -394,7 +443,7 @@ impl TimerActor {
                         }
                     };
 
-                    if let Some((remaining, mode, needs_check_in, session_complete)) = tick_result {
+                    if let Some((remaining, mode, session_complete)) = tick_result {
                         if session_complete {
                             let total = self.total_minutes();
                             info!("session completed");
@@ -411,18 +460,22 @@ impl TimerActor {
                             }
 
                             self.state = None;
-                            time_since_check_in = Duration::ZERO;
                         } else {
-                            self.update_tray_remaining(remaining, mode);
+                            self.update_tray_remaining(remaining, mode.clone());
 
-                            if needs_check_in {
-                                debug!("check-in triggered");
-                                self.persist_check_in();
-                                self.update_tray_check_in();
-                                if let Some(ref notifier) = self.notifier {
-                                    notifier.send_check_in(self.elapsed_minutes());
+                            self.check_pending_check_in_response();
+
+                            if self.pending_check_in.is_none() {
+                                if let Some((index, threshold)) = self.next_check_in_threshold() {
+                                    debug!(threshold, "check-in triggered at {}%", threshold);
+                                    self.mark_check_in_done(index);
+                                    self.persist_check_in();
+                                    self.update_tray_check_in();
+                                    if let Some(ref notifier) = self.notifier {
+                                        let receiver = notifier.send_check_in(threshold);
+                                        self.pending_check_in = Some(receiver);
+                                    }
                                 }
-                                time_since_check_in = Duration::ZERO;
                             }
                         }
                     }
@@ -472,11 +525,7 @@ mod tests {
         tokio::spawn(actor.run());
 
         handle
-            .start(
-                Duration::from_secs(60),
-                FocusMode::Prompting,
-                Duration::from_secs(30),
-            )
+            .start(Duration::from_secs(60), FocusMode::Prompting)
             .await
             .unwrap();
 
@@ -495,11 +544,7 @@ mod tests {
         tokio::spawn(actor.run());
 
         handle
-            .start(
-                Duration::from_secs(60),
-                FocusMode::Review,
-                Duration::from_secs(30),
-            )
+            .start(Duration::from_secs(60), FocusMode::Review)
             .await
             .unwrap();
 
@@ -524,11 +569,7 @@ mod tests {
         tokio::spawn(actor.run());
 
         handle
-            .start(
-                Duration::from_secs(60),
-                FocusMode::Architecture,
-                Duration::from_secs(30),
-            )
+            .start(Duration::from_secs(60), FocusMode::Architecture)
             .await
             .unwrap();
 
@@ -541,23 +582,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn check_in_triggers_at_interval() {
-        let (actor, handle) = create_test_actor();
-        tokio::spawn(actor.run());
-
-        handle
-            .start(
-                Duration::from_secs(10),
-                FocusMode::Prompting,
-                Duration::from_secs(1),
-            )
-            .await
-            .unwrap();
-
-        tokio::time::sleep(Duration::from_millis(3500)).await;
-
-        let status = handle.get_status().await.unwrap();
-        assert!(status.active);
-        assert!(status.remaining.as_secs() <= 7);
+    async fn check_in_thresholds_are_correct() {
+        assert_eq!(CHECK_IN_THRESHOLDS, [25, 50, 75]);
     }
 }

@@ -1,17 +1,37 @@
+use std::time::Duration;
+
 use flux_core::{Config, NotificationUrgency, Translator};
 #[cfg(target_os = "linux")]
 use notify_rust::Hint;
 use notify_rust::{Notification, Urgency};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
+const CHECK_IN_TIMEOUT: Duration = Duration::from_secs(120);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckInResponse {
+    Focused,
+    NotFocused,
+}
+
 pub enum NotifierMessage {
-    CheckIn { session_minutes_elapsed: u64 },
-    SessionStart { duration_minutes: u64 },
-    SessionEnd { total_minutes: u64 },
+    CheckIn {
+        percent: u8,
+        response_sender: oneshot::Sender<CheckInResponse>,
+    },
+    SessionStart {
+        duration_minutes: u64,
+    },
+    SessionEnd {
+        total_minutes: u64,
+    },
     SessionPaused,
     SessionResumed,
-    Alert { title: String, body: String },
+    Alert {
+        title: String,
+        body: String,
+    },
 }
 
 #[derive(Clone)]
@@ -20,18 +40,21 @@ pub struct NotifierHandle {
 }
 
 impl NotifierHandle {
-    pub fn send_check_in(&self, session_minutes_elapsed: u64) {
+    pub fn send_check_in(&self, percent: u8) -> oneshot::Receiver<CheckInResponse> {
+        let (response_sender, response_receiver) = oneshot::channel();
         let sender = self.sender.clone();
         tokio::spawn(async move {
             if let Err(error) = sender
                 .send(NotifierMessage::CheckIn {
-                    session_minutes_elapsed,
+                    percent,
+                    response_sender,
                 })
                 .await
             {
                 error!(%error, "failed to send check-in notification message");
             }
         });
+        response_receiver
     }
 
     pub fn send_session_start(&self, duration_minutes: u64) {
@@ -119,9 +142,10 @@ impl NotifierActor {
         while let Some(message) = self.receiver.recv().await {
             match message {
                 NotifierMessage::CheckIn {
-                    session_minutes_elapsed,
+                    percent,
+                    response_sender,
                 } => {
-                    self.send_check_in_notification(session_minutes_elapsed);
+                    self.send_check_in_notification(percent, response_sender);
                 }
                 NotifierMessage::SessionStart { duration_minutes } => {
                     self.send_session_start_notification(duration_minutes);
@@ -150,22 +174,50 @@ impl NotifierActor {
             .unwrap_or_default()
     }
 
-    fn send_check_in_notification(&self, session_minutes_elapsed: u64) {
+    fn send_check_in_notification(
+        &self,
+        percent: u8,
+        response_sender: oneshot::Sender<CheckInResponse>,
+    ) {
         let translator = self.get_translator();
         let title = format!("Flux - {}", translator.get("notification.check_in_title"));
         let body = translator.format(
             "notification.check_in_body",
-            &[("minutes", &session_minutes_elapsed.to_string())],
+            &[("percent", &percent.to_string())],
         );
+        let yes_label = translator.get("notification.check_in_yes");
+        let no_label = translator.get("notification.check_in_no");
 
-        match self.build_notification(&title, &body).show() {
-            Ok(_) => {
-                debug!(session_minutes_elapsed, "check-in notification sent");
+        let mut notification = self.build_notification(&title, &body);
+        notification
+            .action("yes", &yes_label)
+            .action("no", &no_label)
+            .timeout(CHECK_IN_TIMEOUT.as_millis() as i32);
+
+        tokio::task::spawn_blocking(move || match notification.show() {
+            Ok(handle) => {
+                let mut response = CheckInResponse::Focused;
+
+                handle.wait_for_action(|action| {
+                    response = match action {
+                        "no" => {
+                            debug!(percent, "check-in response: not focused");
+                            CheckInResponse::NotFocused
+                        }
+                        _ => {
+                            debug!(percent, "check-in response: focused (action={})", action);
+                            CheckInResponse::Focused
+                        }
+                    };
+                });
+
+                let _ = response_sender.send(response);
             }
             Err(error) => {
                 warn!(%error, "failed to show check-in notification");
+                let _ = response_sender.send(CheckInResponse::Focused);
             }
-        }
+        });
     }
 
     fn send_session_start_notification(&self, duration_minutes: u64) {
@@ -271,21 +323,27 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn handle_can_send_messages() {
+    async fn handle_can_send_simple_messages() {
         let (actor, handle) = NotifierActor::new(NotificationUrgency::Normal, false);
 
         let actor_task = tokio::spawn(async move {
             tokio::time::timeout(std::time::Duration::from_millis(100), actor.run()).await
         });
 
-        handle.send_check_in(25);
         handle.send_session_start(45);
         handle.send_session_end(45);
+        handle.send_session_paused();
+        handle.send_session_resumed();
         handle.send_alert("Test".to_string(), "Body".to_string());
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         drop(handle);
 
         let _ = actor_task.await;
+    }
+
+    #[test]
+    fn check_in_response_variants() {
+        assert_ne!(CheckInResponse::Focused, CheckInResponse::NotFocused);
     }
 }

@@ -19,10 +19,17 @@ pub struct FluxApp {
     theme: Theme,
     theme_applied: bool,
     show_clear_modal: bool,
-    #[allow(dead_code)]
-    runtime: tokio::runtime::Runtime,
+    runtime: Option<tokio::runtime::Runtime>,
     session_controller: SessionController,
     session_form: StartSessionForm,
+}
+
+impl Drop for FluxApp {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_background();
+        }
+    }
 }
 
 impl FluxApp {
@@ -45,7 +52,7 @@ impl FluxApp {
             theme: Theme::dark(),
             theme_applied: false,
             show_clear_modal: false,
-            runtime,
+            runtime: Some(runtime),
             session_controller,
             session_form: StartSessionForm::default(),
         }
@@ -64,6 +71,10 @@ impl eframe::App for FluxApp {
         }
 
         self.session_controller.poll(ctx);
+
+        if self.session_controller.session_just_ended() && self.data.reload().is_ok() {
+            self.update_stats();
+        }
 
         let panel_frame = egui::Frame::none()
             .fill(self.theme.colors.background)
