@@ -140,6 +140,18 @@ impl StatsData {
         self.sessions.clear();
         Ok(count)
     }
+
+    pub fn reload(&mut self) -> Result<()> {
+        let (sessions, database_path) = load_all_sessions()?;
+        let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
+        let app_usages = load_app_usages(&session_ids, database_path.as_ref());
+
+        self.sessions = sessions;
+        self.app_usages = app_usages;
+        self.database_path = database_path;
+
+        Ok(())
+    }
 }
 
 pub fn load_initial_data() -> Result<StatsData> {

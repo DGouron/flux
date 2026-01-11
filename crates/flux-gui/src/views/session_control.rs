@@ -38,6 +38,7 @@ pub struct SessionController {
     current_status: SessionStatus,
     last_poll: Instant,
     pending_action: bool,
+    session_just_ended: bool,
 }
 
 impl SessionController {
@@ -53,6 +54,7 @@ impl SessionController {
             current_status: SessionStatus::Unknown,
             last_poll: Instant::now() - STATUS_POLL_INTERVAL,
             pending_action: false,
+            session_just_ended: false,
         }
     }
 
@@ -115,16 +117,40 @@ impl SessionController {
     }
 
     pub fn poll(&mut self, context: &egui::Context) {
+        self.session_just_ended = false;
+
         while let Ok(status) = self.status_receiver.try_recv() {
+            let was_active = self.has_active_session();
+            let is_now_inactive = matches!(status, SessionStatus::NoSession);
+
+            if was_active && is_now_inactive {
+                self.session_just_ended = true;
+            }
+
             self.current_status = status;
             self.pending_action = false;
+            context.request_repaint();
         }
 
         if self.last_poll.elapsed() >= STATUS_POLL_INTERVAL {
             let _ = self.command_sender.send(SessionCommand::RefreshStatus);
             self.last_poll = Instant::now();
+        }
+
+        if self.has_active_session() {
             context.request_repaint_after(STATUS_POLL_INTERVAL);
         }
+    }
+
+    fn has_active_session(&self) -> bool {
+        matches!(
+            self.current_status,
+            SessionStatus::Active { .. } | SessionStatus::Paused { .. }
+        )
+    }
+
+    pub fn session_just_ended(&self) -> bool {
+        self.session_just_ended
     }
 
     pub fn status(&self) -> &SessionStatus {
