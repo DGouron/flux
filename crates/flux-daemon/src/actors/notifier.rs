@@ -32,6 +32,10 @@ pub enum NotifierMessage {
         title: String,
         body: String,
     },
+    DistractionAlert {
+        title: String,
+        body: String,
+    },
 }
 
 #[derive(Clone)]
@@ -107,6 +111,18 @@ impl NotifierHandle {
             }
         });
     }
+
+    pub fn send_distraction_alert(&self, title: String, body: String) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender
+                .send(NotifierMessage::DistractionAlert { title, body })
+                .await
+            {
+                error!(%error, "failed to send distraction alert notification message");
+            }
+        });
+    }
 }
 
 pub struct NotifierActor {
@@ -161,6 +177,9 @@ impl NotifierActor {
                 }
                 NotifierMessage::Alert { title, body } => {
                     self.send_alert_notification(&title, &body);
+                }
+                NotifierMessage::DistractionAlert { title, body } => {
+                    self.send_distraction_alert_notification(&title, &body);
                 }
             }
         }
@@ -303,6 +322,17 @@ impl NotifierActor {
         }
     }
 
+    fn send_distraction_alert_notification(&self, title: &str, body: &str) {
+        match self.build_distraction_notification(title, body).show() {
+            Ok(_) => {
+                debug!(title, "distraction alert notification sent");
+            }
+            Err(error) => {
+                warn!(%error, title, "failed to show distraction alert notification");
+            }
+        }
+    }
+
     fn build_notification(&self, summary: &str, body: &str) -> Notification {
         let mut notification = Notification::new();
         notification.summary(summary).body(body).appname("Flux");
@@ -312,6 +342,24 @@ impl NotifierActor {
 
         if self.sound_enabled {
             notification.sound_name("message-new-instant");
+        }
+
+        notification
+    }
+
+    fn build_distraction_notification(&self, summary: &str, body: &str) -> Notification {
+        let mut notification = Notification::new();
+        notification
+            .summary(summary)
+            .body(body)
+            .appname("Flux")
+            .icon("dialog-warning");
+
+        #[cfg(target_os = "linux")]
+        notification.hint(Hint::Urgency(Urgency::Critical));
+
+        if self.sound_enabled {
+            notification.sound_name("dialog-warning");
         }
 
         notification

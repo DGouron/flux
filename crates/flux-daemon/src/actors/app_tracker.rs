@@ -295,7 +295,7 @@ impl AppTrackerActor {
             ],
         );
 
-        self.notifier.send_alert(title, body);
+        self.notifier.send_distraction_alert(title, body);
         state.distraction_alert_sent = true;
 
         debug!(
