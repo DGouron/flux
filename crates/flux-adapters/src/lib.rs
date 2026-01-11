@@ -8,5 +8,5 @@ pub mod sqlite;
 pub mod testing;
 
 pub use gitlab::GitLabReviewGateway;
-pub use sqlite::SqliteSessionRepository;
+pub use sqlite::{SqliteAppTrackingRepository, SqliteSessionRepository};
 pub use testing::{FailingReviewGateway, StubReviewGateway};

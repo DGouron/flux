@@ -1,14 +1,15 @@
 mod actors;
 mod server;
+mod window;
 
 use std::sync::Arc;
 
 #[cfg(target_os = "linux")]
 use actors::{check_for_updates, open_configuration, open_dashboard, spawn_tray, TrayAction};
-use actors::{NotifierActor, TimerActor};
+use actors::{AppTrackerActor, NotifierActor, TimerActor};
 use anyhow::Result;
-use flux_adapters::SqliteSessionRepository;
-use flux_core::{Config, SessionRepository};
+use flux_adapters::{SqliteAppTrackingRepository, SqliteSessionRepository};
+use flux_core::{AppTrackingRepository, Config, SessionRepository};
 use server::Server;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
@@ -62,13 +63,30 @@ async fn main() -> Result<()> {
     let _tray_handle = tray_handle;
 
     let session_repository = create_session_repository();
+    let app_tracking_repository = create_app_tracking_repository();
+
+    let app_tracker_handle = if let Some(repository) = app_tracking_repository {
+        let (app_tracker_actor, handle) = AppTrackerActor::new(repository);
+        tokio::spawn(app_tracker_actor.run());
+        Some(handle)
+    } else {
+        None
+    };
 
     #[cfg(target_os = "linux")]
-    let (timer_actor, timer_handle) =
-        TimerActor::new(Some(notifier_handle), tray_state, session_repository);
+    let (timer_actor, timer_handle) = TimerActor::new(
+        Some(notifier_handle),
+        app_tracker_handle,
+        tray_state,
+        session_repository,
+    );
 
     #[cfg(not(target_os = "linux"))]
-    let (timer_actor, timer_handle) = TimerActor::new(Some(notifier_handle), session_repository);
+    let (timer_actor, timer_handle) = TimerActor::new(
+        Some(notifier_handle),
+        app_tracker_handle,
+        session_repository,
+    );
     tokio::spawn(timer_actor.run());
 
     #[cfg(target_os = "linux")]
@@ -140,6 +158,28 @@ fn create_session_repository() -> Option<Arc<dyn SessionRepository>> {
         }
         Err(error) => {
             warn!(%error, "failed to initialize session repository, sessions will not be persisted");
+            None
+        }
+    }
+}
+
+fn create_app_tracking_repository() -> Option<Arc<dyn AppTrackingRepository>> {
+    let data_dir = dirs::data_dir()?.join("flux");
+
+    if let Err(error) = std::fs::create_dir_all(&data_dir) {
+        warn!(%error, "failed to create data directory, app tracking will not be persisted");
+        return None;
+    }
+
+    let database_path = data_dir.join("sessions.db");
+
+    match SqliteAppTrackingRepository::new(&database_path) {
+        Ok(repository) => {
+            info!("app tracking enabled");
+            Some(Arc::new(repository))
+        }
+        Err(error) => {
+            warn!(%error, "failed to initialize app tracking repository");
             None
         }
     }

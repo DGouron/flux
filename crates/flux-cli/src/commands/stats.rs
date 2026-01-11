@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use chrono::{Duration, Local, Utc};
-use flux_adapters::SqliteSessionRepository;
-use flux_core::{Config, Session, SessionRepository, Translator};
+use flux_adapters::{SqliteAppTrackingRepository, SqliteSessionRepository};
+use flux_core::{AppTrackingRepository, AppUsage, Config, Session, SessionRepository, Translator};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Period {
@@ -44,7 +44,10 @@ pub async fn execute(period: Period) -> Result<()> {
         return Ok(());
     }
 
-    let stats = compute_stats(&sessions);
+    let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
+    let app_usages = fetch_app_tracking(&session_ids);
+
+    let stats = compute_stats(&sessions, &app_usages);
     display_stats(&stats, period, &translator);
 
     Ok(())
@@ -90,14 +93,35 @@ fn fetch_sessions(repository: &SqliteSessionRepository, period: Period) -> Resul
         .map_err(|error| anyhow::anyhow!("read error: {}", error))
 }
 
+fn fetch_app_tracking(session_ids: &[i64]) -> Vec<AppUsage> {
+    let data_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("flux"),
+        None => return Vec::new(),
+    };
+
+    let database_path = data_dir.join("sessions.db");
+
+    if !database_path.exists() {
+        return Vec::new();
+    }
+
+    let repository = match SqliteAppTrackingRepository::new(&database_path) {
+        Ok(repo) => repo,
+        Err(_) => return Vec::new(),
+    };
+
+    repository.find_by_sessions(session_ids).unwrap_or_default()
+}
+
 struct Stats {
     total_seconds: i64,
     session_count: usize,
     by_mode: HashMap<String, i64>,
+    by_application: HashMap<String, i64>,
     total_check_ins: i32,
 }
 
-fn compute_stats(sessions: &[Session]) -> Stats {
+fn compute_stats(sessions: &[Session], app_usages: &[AppUsage]) -> Stats {
     let mut total_seconds = 0i64;
     let mut by_mode: HashMap<String, i64> = HashMap::new();
     let mut total_check_ins = 0i32;
@@ -111,10 +135,18 @@ fn compute_stats(sessions: &[Session]) -> Stats {
         *by_mode.entry(mode_key).or_insert(0) += duration;
     }
 
+    let mut by_application: HashMap<String, i64> = HashMap::new();
+    for usage in app_usages {
+        *by_application
+            .entry(usage.application_name.clone())
+            .or_insert(0) += usage.duration_seconds;
+    }
+
     Stats {
         total_seconds,
         session_count: sessions.len(),
         by_mode,
+        by_application,
         total_check_ins,
     }
 }
@@ -158,6 +190,33 @@ fn display_stats(stats: &Stats, period: Period, translator: &Translator) {
                 "{} {:14} {:>8} ({}%)",
                 prefix,
                 format!("{}:", mode),
+                format_duration(**seconds),
+                percentage
+            );
+        }
+        println!();
+    }
+
+    if !stats.by_application.is_empty() {
+        println!("Applications:");
+
+        let mut apps: Vec<_> = stats.by_application.iter().collect();
+        apps.sort_by(|a, b| b.1.cmp(a.1));
+
+        let total_app_time: i64 = apps.iter().map(|(_, s)| **s).sum();
+        let total = total_app_time.max(1) as f64;
+
+        for (index, (app, seconds)) in apps.iter().enumerate() {
+            let percentage = (**seconds as f64 / total * 100.0) as u32;
+            let prefix = if index == apps.len() - 1 {
+                "└──"
+            } else {
+                "├──"
+            };
+            println!(
+                "{} {:14} {:>8} ({}%)",
+                prefix,
+                format!("{}:", app),
                 format_duration(**seconds),
                 percentage
             );
@@ -237,13 +296,30 @@ mod tests {
             create_test_session(FocusMode::Review, 900, 0),
         ];
 
-        let stats = compute_stats(&sessions);
+        let stats = compute_stats(&sessions, &[]);
 
         assert_eq!(stats.total_seconds, 3900);
         assert_eq!(stats.session_count, 3);
         assert_eq!(stats.by_mode.get("prompting"), Some(&3000));
         assert_eq!(stats.by_mode.get("review"), Some(&900));
         assert_eq!(stats.total_check_ins, 3);
+        assert!(stats.by_application.is_empty());
+    }
+
+    #[test]
+    fn compute_stats_aggregates_app_usage() {
+        use flux_core::FocusMode;
+
+        let sessions = vec![create_test_session(FocusMode::Prompting, 1800, 0)];
+        let app_usages = vec![
+            AppUsage::with_duration(1, "cursor".to_string(), 1000),
+            AppUsage::with_duration(1, "firefox".to_string(), 500),
+        ];
+
+        let stats = compute_stats(&sessions, &app_usages);
+
+        assert_eq!(stats.by_application.get("cursor"), Some(&1000));
+        assert_eq!(stats.by_application.get("firefox"), Some(&500));
     }
 
     fn create_test_session(mode: flux_core::FocusMode, duration: i64, check_ins: i32) -> Session {
