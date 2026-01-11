@@ -13,10 +13,10 @@ use crate::window::{WindowDetector, X11WindowDetector};
 const POLLING_INTERVAL_SECONDS: u64 = 5;
 
 pub enum AppTrackerMessage {
-    SessionStarted { session_id: SessionId },
-    SessionEnded,
-    SessionPaused,
-    SessionResumed,
+    Started { session_id: SessionId },
+    Ended,
+    Paused,
+    Resumed,
 }
 
 #[derive(Clone)]
@@ -28,10 +28,7 @@ impl AppTrackerHandle {
     pub fn send_session_started(&self, session_id: SessionId) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender
-                .send(AppTrackerMessage::SessionStarted { session_id })
-                .await
-            {
+            if let Err(error) = sender.send(AppTrackerMessage::Started { session_id }).await {
                 error!(%error, "failed to send session started message to app tracker");
             }
         });
@@ -40,7 +37,7 @@ impl AppTrackerHandle {
     pub fn send_session_ended(&self) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender.send(AppTrackerMessage::SessionEnded).await {
+            if let Err(error) = sender.send(AppTrackerMessage::Ended).await {
                 error!(%error, "failed to send session ended message to app tracker");
             }
         });
@@ -49,7 +46,7 @@ impl AppTrackerHandle {
     pub fn send_session_paused(&self) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender.send(AppTrackerMessage::SessionPaused).await {
+            if let Err(error) = sender.send(AppTrackerMessage::Paused).await {
                 error!(%error, "failed to send session paused message to app tracker");
             }
         });
@@ -58,7 +55,7 @@ impl AppTrackerHandle {
     pub fn send_session_resumed(&self) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender.send(AppTrackerMessage::SessionResumed).await {
+            if let Err(error) = sender.send(AppTrackerMessage::Resumed).await {
                 error!(%error, "failed to send session resumed message to app tracker");
             }
         });
@@ -139,7 +136,7 @@ impl AppTrackerActor {
 
     fn handle_message(&mut self, message: AppTrackerMessage) {
         match message {
-            AppTrackerMessage::SessionStarted { session_id } => {
+            AppTrackerMessage::Started { session_id } => {
                 debug!(session_id, "app tracking started for session");
                 self.state = Some(TrackerState {
                     session_id,
@@ -147,7 +144,7 @@ impl AppTrackerActor {
                     accumulated: HashMap::new(),
                 });
             }
-            AppTrackerMessage::SessionEnded => {
+            AppTrackerMessage::Ended => {
                 if let Some(state) = self.state.take() {
                     Self::flush_to_repository(&self.repository, &state);
                     debug!(
@@ -156,7 +153,7 @@ impl AppTrackerActor {
                     );
                 }
             }
-            AppTrackerMessage::SessionPaused => {
+            AppTrackerMessage::Paused => {
                 if let Some(mut state) = self.state.take() {
                     state.paused = true;
                     Self::flush_to_repository(&self.repository, &state);
@@ -165,7 +162,7 @@ impl AppTrackerActor {
                     debug!("app tracking paused");
                 }
             }
-            AppTrackerMessage::SessionResumed => {
+            AppTrackerMessage::Resumed => {
                 if let Some(ref mut state) = self.state {
                     state.paused = false;
                     debug!("app tracking resumed");
@@ -297,7 +294,7 @@ mod tests {
             accumulated: HashMap::from([("cursor".to_string(), 100), ("firefox".to_string(), 50)]),
         });
 
-        actor.handle_message(AppTrackerMessage::SessionEnded);
+        actor.handle_message(AppTrackerMessage::Ended);
 
         let saved = repository_clone.saved.lock().unwrap();
         assert_eq!(saved.len(), 2);
