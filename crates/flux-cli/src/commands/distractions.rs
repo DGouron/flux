@@ -7,13 +7,14 @@ use std::path::PathBuf;
 pub fn list() -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let translator = Translator::new(config.general.language);
+    let distractions = config.distractions();
 
     println!(
         "\n{}:\n",
-        translator.get("command.distractions_current_list")
+        translator.get("command.distractions_apps_header")
     );
 
-    let mut apps: Vec<_> = config.distractions().apps.iter().collect();
+    let mut apps: Vec<_> = distractions.apps.iter().collect();
     apps.sort();
 
     for (index, app) in apps.iter().enumerate() {
@@ -23,6 +24,23 @@ pub fn list() -> Result<()> {
             "├──"
         };
         println!("{} {}", prefix, app);
+    }
+
+    println!(
+        "\n{}:\n",
+        translator.get("command.distractions_patterns_header")
+    );
+
+    let mut patterns: Vec<_> = distractions.title_patterns.iter().collect();
+    patterns.sort();
+
+    for (index, pattern) in patterns.iter().enumerate() {
+        let prefix = if index == patterns.len() - 1 {
+            "└──"
+        } else {
+            "├──"
+        };
+        println!("{} {}", prefix, pattern);
     }
 
     println!();
@@ -84,12 +102,88 @@ pub fn remove(app: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn add_pattern(pattern: &str) -> Result<()> {
+    let config = Config::load().unwrap_or_default();
+    let translator = Translator::new(config.general.language);
+
+    let pattern_lower = pattern.to_lowercase();
+
+    if config
+        .distractions()
+        .title_patterns
+        .contains(&pattern_lower)
+    {
+        println!(
+            "{}",
+            translator.format(
+                "command.distractions_pattern_already_exists",
+                &[("pattern", &pattern_lower)]
+            )
+        );
+        return Ok(());
+    }
+
+    let mut distractions = config.distractions().clone();
+    distractions.add_title_pattern(&pattern_lower);
+    distractions
+        .save()
+        .context("Cannot save distractions config")?;
+
+    println!(
+        "{}",
+        translator.format(
+            "command.distractions_pattern_added",
+            &[("pattern", &pattern_lower)]
+        )
+    );
+    Ok(())
+}
+
+pub fn remove_pattern(pattern: &str) -> Result<()> {
+    let config = Config::load().unwrap_or_default();
+    let translator = Translator::new(config.general.language);
+
+    let pattern_lower = pattern.to_lowercase();
+
+    if !config
+        .distractions()
+        .title_patterns
+        .contains(&pattern_lower)
+    {
+        println!(
+            "{}",
+            translator.format(
+                "command.distractions_pattern_not_found",
+                &[("pattern", &pattern_lower)]
+            )
+        );
+        return Ok(());
+    }
+
+    let mut distractions = config.distractions().clone();
+    distractions.remove_title_pattern(&pattern_lower);
+    distractions
+        .save()
+        .context("Cannot save distractions config")?;
+
+    println!(
+        "{}",
+        translator.format(
+            "command.distractions_pattern_removed",
+            &[("pattern", &pattern_lower)]
+        )
+    );
+    Ok(())
+}
+
 pub fn reset() -> Result<()> {
     let config = Config::load().unwrap_or_default();
     let translator = Translator::new(config.general.language);
 
-    let default_apps = DistractionConfig::default().apps;
-    update_distractions_config(&default_apps)?;
+    let default_distractions = DistractionConfig::default();
+    default_distractions
+        .save()
+        .context("Cannot save distractions config")?;
 
     println!("{}", translator.get("command.distractions_reset"));
     Ok(())

@@ -121,6 +121,16 @@ enum DistractionsAction {
         /// Nom de l'application à retirer
         app: String,
     },
+    /// Ajouter un pattern de titre de fenêtre (pour sites web)
+    AddPattern {
+        /// Pattern à détecter dans le titre (ex: linkedin, facebook)
+        pattern: String,
+    },
+    /// Retirer un pattern de titre de fenêtre
+    RemovePattern {
+        /// Pattern à retirer
+        pattern: String,
+    },
     /// Réinitialiser la liste aux valeurs par défaut
     Reset,
 }
@@ -164,6 +174,12 @@ async fn main() {
             DistractionsAction::List => commands::distractions::list(),
             DistractionsAction::Add { app } => commands::distractions::add(&app),
             DistractionsAction::Remove { app } => commands::distractions::remove(&app),
+            DistractionsAction::AddPattern { pattern } => {
+                commands::distractions::add_pattern(&pattern)
+            }
+            DistractionsAction::RemovePattern { pattern } => {
+                commands::distractions::remove_pattern(&pattern)
+            }
             DistractionsAction::Reset => commands::distractions::reset(),
         },
         Commands::Suggestions { action } => match action {

@@ -157,7 +157,15 @@ impl Default for DistractionConfig {
                 "youtube".to_string(),
                 "reddit".to_string(),
             ]),
-            title_patterns: HashSet::new(),
+            title_patterns: HashSet::from([
+                "linkedin".to_string(),
+                "facebook".to_string(),
+                "instagram".to_string(),
+                "tiktok".to_string(),
+                "x.com".to_string(),
+                "netflix".to_string(),
+                "twitch".to_string(),
+            ]),
             alert_enabled: false,
             alert_after_seconds: 30,
             friction_apps: HashSet::new(),
@@ -196,6 +204,14 @@ impl DistractionConfig {
 
     pub fn remove_app(&mut self, app: &str) -> bool {
         self.apps.remove(&app.to_lowercase())
+    }
+
+    pub fn add_title_pattern(&mut self, pattern: &str) -> bool {
+        self.title_patterns.insert(pattern.to_lowercase())
+    }
+
+    pub fn remove_title_pattern(&mut self, pattern: &str) -> bool {
+        self.title_patterns.remove(&pattern.to_lowercase())
     }
 
     pub fn is_whitelisted(&self, application_name: &str) -> bool {
@@ -237,10 +253,12 @@ impl DistractionConfig {
         let mut lines: Vec<String> = content.lines().map(String::from).collect();
         let mut in_distractions_section = false;
         let mut apps_updated = false;
+        let mut title_patterns_updated = false;
         let mut whitelist_updated = false;
         let mut distractions_section_exists = false;
 
         let apps_line = Self::format_hashset_line("apps", &self.apps);
+        let title_patterns_line = Self::format_hashset_line("title_patterns", &self.title_patterns);
         let whitelist_line = Self::format_hashset_line("whitelist_apps", &self.whitelist_apps);
 
         for line in &mut lines {
@@ -260,6 +278,9 @@ impl DistractionConfig {
                 if trimmed.starts_with("apps =") {
                     *line = apps_line.clone();
                     apps_updated = true;
+                } else if trimmed.starts_with("title_patterns") {
+                    *line = title_patterns_line.clone();
+                    title_patterns_updated = true;
                 } else if trimmed.starts_with("whitelist_apps") {
                     *line = whitelist_line.clone();
                     whitelist_updated = true;
@@ -273,6 +294,7 @@ impl DistractionConfig {
             }
             lines.push("[distractions]".to_string());
             lines.push(apps_line);
+            lines.push(title_patterns_line);
             lines.push(whitelist_line);
             return lines.join("\n");
         }
@@ -288,6 +310,9 @@ impl DistractionConfig {
         if let Some(section_index) = insert_after_section {
             if !whitelist_updated {
                 lines.insert(section_index + 1, whitelist_line);
+            }
+            if !title_patterns_updated {
+                lines.insert(section_index + 1, title_patterns_line);
             }
             if !apps_updated {
                 lines.insert(section_index + 1, apps_line);
