@@ -180,6 +180,39 @@ impl SessionRepository for SqliteSessionRepository {
         Ok(sessions)
     }
 
+    fn find_completed_between(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<Session>, SessionRepositoryError> {
+        let connection = self.connection.lock().unwrap();
+
+        let mut statement = connection
+            .prepare(
+                "SELECT id, mode, started_at, ended_at, duration_seconds, check_in_count
+                 FROM sessions
+                 WHERE ended_at IS NOT NULL AND started_at >= ?1 AND started_at < ?2
+                 ORDER BY started_at DESC",
+            )
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
+
+        let sessions = statement
+            .query_map(params![start.to_rfc3339(), end.to_rfc3339()], |row| {
+                Ok(row_to_session(row))
+            })
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| SessionRepositoryError::Storage {
+                message: error.to_string(),
+            })?;
+
+        Ok(sessions)
+    }
+
     fn count_completed_sessions(&self) -> Result<u32, SessionRepositoryError> {
         let connection = self.connection.lock().unwrap();
 
@@ -495,5 +528,45 @@ mod tests {
             result,
             Err(SessionRepositoryError::NotFound { id: 999 })
         ));
+    }
+
+    #[test]
+    fn find_completed_between_filters_by_date_range() {
+        use chrono::Duration;
+
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let now = Utc::now();
+
+        let mut session1 = Session::start(FocusMode::Prompting);
+        session1.end();
+        repository.save(&mut session1).unwrap();
+
+        let mut session2 = Session::start(FocusMode::Review);
+        session2.end();
+        repository.save(&mut session2).unwrap();
+
+        let start = now - Duration::hours(1);
+        let end = now + Duration::hours(1);
+        let sessions = repository.find_completed_between(start, end).unwrap();
+
+        assert_eq!(sessions.len(), 2);
+    }
+
+    #[test]
+    fn find_completed_between_excludes_sessions_outside_range() {
+        use chrono::Duration;
+
+        let repository = SqliteSessionRepository::in_memory().unwrap();
+
+        let mut session = Session::start(FocusMode::Prompting);
+        session.end();
+        repository.save(&mut session).unwrap();
+
+        let start = Utc::now() + Duration::hours(1);
+        let end = Utc::now() + Duration::hours(2);
+        let sessions = repository.find_completed_between(start, end).unwrap();
+
+        assert!(sessions.is_empty());
     }
 }

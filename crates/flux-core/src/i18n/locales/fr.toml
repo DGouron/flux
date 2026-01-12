@@ -65,6 +65,19 @@ stats_focus_score = "Score de focus"
 stats_context_switches = "Changements de contexte"
 stats_short_bursts = "Passages rapides"
 
+# Digest command
+digest_header = "📊 Résumé de la semaine"
+digest_total_time = "Temps total"
+digest_sessions = "Sessions"
+digest_average = "moyenne"
+digest_focus_score = "Score focus"
+digest_by_mode = "Par mode"
+digest_top_focus = "Top apps focus"
+digest_distractions = "Distractions"
+digest_delta_positive = "+{value}"
+digest_vs_last_week = "vs semaine dernière"
+digest_no_data = "Pas de données pour cette semaine"
+
 # Distractions command
 distractions_current_list = "Applications de distraction configurées"
 distractions_already_exists = "'{app}' est déjà dans la liste des distractions"
@@ -130,6 +143,8 @@ friction_escalated_title = "Toujours distrait ?"
 friction_escalated_body = "Tu es toujours sur {app}. Stopper la session ?"
 friction_no_continue = "Non, continuer"
 friction_yes_stop = "Oui, stopper"
+digest_title = "Résumé de la semaine"
+digest_body = "{time} cette semaine ({sessions} sessions)"
 
 [gui]
 tab_overview = "Vue d'ensemble"

@@ -48,6 +48,8 @@ enum Commands {
         #[arg(short, long, default_value = "week")]
         period: String,
     },
+    /// Afficher le résumé hebdomadaire
+    Digest,
     /// Mettre à jour Flux vers la dernière version
     Update {
         /// Ignorer la confirmation si le daemon est en cours
@@ -131,6 +133,7 @@ async fn main() {
             let period = commands::Period::from_str(&period).unwrap_or(commands::Period::Week);
             commands::stats(period).await
         }
+        Commands::Digest => commands::digest().await,
         Commands::Update { yes } => commands::update(yes).await,
         Commands::Lang { language } => commands::lang(language),
         Commands::Dashboard => commands::dashboard(),

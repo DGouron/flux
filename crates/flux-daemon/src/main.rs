@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 #[cfg(target_os = "linux")]
 use actors::{check_for_updates, open_configuration, open_dashboard, spawn_tray, TrayAction};
-use actors::{AppTrackerActor, NotifierActor, TimerActor};
+use actors::{AppTrackerActor, DigestSchedulerActor, NotifierActor, TimerActor};
 use anyhow::Result;
 use flux_adapters::{
     SqliteAppTrackingRepository, SqliteSessionMetricsRepository, SqliteSessionRepository,
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     let session_metrics_repository = create_session_metrics_repository();
 
     let app_tracker_handle = if let (Some(repository), Some(metrics_repository)) =
-        (app_tracking_repository, session_metrics_repository)
+        (app_tracking_repository.clone(), session_metrics_repository)
     {
         let (app_tracker_actor, handle) = AppTrackerActor::new(
             repository,
@@ -82,6 +82,20 @@ async fn main() -> Result<()> {
     } else {
         None
     };
+
+    if let (Some(session_repo), Some(app_repo)) =
+        (session_repository.clone(), app_tracking_repository)
+    {
+        let digest_scheduler = DigestSchedulerActor::new(
+            notifier_handle.clone(),
+            config.digest.clone(),
+            config.distractions.clone(),
+            session_repo,
+            app_repo,
+        );
+        let digest_shutdown = shutdown_sender.subscribe();
+        tokio::spawn(digest_scheduler.run(digest_shutdown));
+    }
 
     #[cfg(target_os = "linux")]
     let (timer_actor, timer_handle) = TimerActor::new(

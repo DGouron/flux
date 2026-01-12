@@ -1584,6 +1584,7 @@ version = "0.2.7"
 dependencies = [
  "anyhow",
  "bincode",
+ "chrono",
  "dirs",
  "flux-adapters",
  "flux-core",

@@ -30,6 +30,7 @@ pub struct Config {
     pub notifications: NotificationConfig,
     pub tray: TrayConfig,
     pub distractions: DistractionConfig,
+    pub digest: DigestConfig,
     pub gitlab: Option<ProviderConfig>,
     pub github: Option<ProviderConfig>,
 }
@@ -92,6 +93,24 @@ impl Default for NotificationConfig {
 #[serde(default)]
 pub struct TrayConfig {
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct DigestConfig {
+    pub enabled: bool,
+    pub day: String,
+    pub hour: u8,
+}
+
+impl Default for DigestConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            day: "monday".to_string(),
+            hour: 9,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -388,5 +407,30 @@ mod tests {
         assert!(!config.is_distraction("cursor"));
         assert!(!config.is_distraction("firefox"));
         assert!(!config.is_distraction("code"));
+    }
+
+    #[test]
+    fn default_digest_config_is_monday_9am() {
+        let config = DigestConfig::default();
+
+        assert!(config.enabled);
+        assert_eq!(config.day, "monday");
+        assert_eq!(config.hour, 9);
+    }
+
+    #[test]
+    fn parse_digest_config() {
+        let toml = r#"
+            [digest]
+            enabled = false
+            day = "sunday"
+            hour = 18
+        "#;
+
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert!(!config.digest.enabled);
+        assert_eq!(config.digest.day, "sunday");
+        assert_eq!(config.digest.hour, 18);
     }
 }

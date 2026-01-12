@@ -18,6 +18,7 @@ flux-protocol = { path = "../flux-protocol" }
 flux-core = { path = "../flux-core" }
 flux-adapters = { path = "../flux-adapters" }
 dirs.workspace = true
+chrono.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

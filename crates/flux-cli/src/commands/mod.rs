@@ -1,6 +1,7 @@
 mod clear;
 mod dashboard;
 mod delete;
+mod digest;
 pub mod distractions;
 mod init;
 mod lang;
@@ -16,6 +17,7 @@ mod update;
 pub use clear::execute as clear;
 pub use dashboard::execute as dashboard;
 pub use delete::execute as delete;
+pub use digest::execute as digest;
 pub use init::{config_exists, execute as init};
 pub use lang::execute as lang;
 pub use pause::execute as pause;

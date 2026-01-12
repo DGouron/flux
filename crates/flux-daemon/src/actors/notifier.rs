@@ -52,6 +52,10 @@ pub enum NotifierMessage {
         app: String,
         response_sender: oneshot::Sender<FrictionResponse>,
     },
+    WeeklyDigest {
+        total_time: String,
+        session_count: usize,
+    },
 }
 
 #[derive(Clone)]
@@ -178,6 +182,21 @@ impl NotifierHandle {
         });
         response_receiver
     }
+
+    pub fn send_weekly_digest(&self, total_time: String, session_count: usize) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender
+                .send(NotifierMessage::WeeklyDigest {
+                    total_time,
+                    session_count,
+                })
+                .await
+            {
+                error!(%error, "failed to send weekly digest notification message");
+            }
+        });
+    }
 }
 
 pub struct NotifierActor {
@@ -248,6 +267,12 @@ impl NotifierActor {
                     response_sender,
                 } => {
                     self.send_friction_escalated_notification(&app, response_sender);
+                }
+                NotifierMessage::WeeklyDigest {
+                    total_time,
+                    session_count,
+                } => {
+                    self.send_weekly_digest_notification(&total_time, session_count);
                 }
             }
         }
@@ -508,6 +533,27 @@ impl NotifierActor {
                 let _ = response_sender.send(FrictionResponse::Continue);
             }
         });
+    }
+
+    fn send_weekly_digest_notification(&self, total_time: &str, session_count: usize) {
+        let translator = self.get_translator();
+        let title = format!("Flux - {}", translator.get("notification.digest_title"));
+        let body = translator.format(
+            "notification.digest_body",
+            &[
+                ("time", total_time),
+                ("sessions", &session_count.to_string()),
+            ],
+        );
+
+        match self.build_notification(&title, &body).show() {
+            Ok(_) => {
+                info!("weekly digest notification sent");
+            }
+            Err(error) => {
+                warn!(%error, "failed to show weekly digest notification");
+            }
+        }
     }
 }
 

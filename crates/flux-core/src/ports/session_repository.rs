@@ -29,6 +29,12 @@ pub trait SessionRepository: Send + Sync {
         since: DateTime<Utc>,
     ) -> Result<Vec<Session>, SessionRepositoryError>;
 
+    fn find_completed_between(
+        &self,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    ) -> Result<Vec<Session>, SessionRepositoryError>;
+
     fn count_completed_sessions(&self) -> Result<u32, SessionRepositoryError>;
 
     fn clear_completed_sessions(&self) -> Result<u32, SessionRepositoryError>;
