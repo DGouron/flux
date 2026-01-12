@@ -306,6 +306,7 @@ impl NotifierActor {
             .action("no", &no_label)
             .timeout(CHECK_IN_TIMEOUT.as_millis() as i32);
 
+        #[cfg(target_os = "linux")]
         tokio::task::spawn_blocking(move || match notification.show() {
             Ok(handle) => {
                 let mut response = CheckInResponse::Focused;
@@ -329,6 +330,22 @@ impl NotifierActor {
                 warn!(%error, "failed to show check-in notification");
                 let _ = response_sender.send(CheckInResponse::Focused);
             }
+        });
+
+        #[cfg(not(target_os = "linux"))]
+        tokio::task::spawn_blocking(move || {
+            match notification.show() {
+                Ok(_) => {
+                    debug!(
+                        percent,
+                        "check-in notification shown (no action support on this platform)"
+                    );
+                }
+                Err(error) => {
+                    warn!(%error, "failed to show check-in notification");
+                }
+            }
+            let _ = response_sender.send(CheckInResponse::Focused);
         });
     }
 
@@ -479,6 +496,7 @@ impl NotifierActor {
             .action("back", &no_label)
             .timeout(60000);
 
+        #[cfg(target_os = "linux")]
         tokio::task::spawn_blocking(move || match notification.show() {
             Ok(handle) => {
                 let mut response = FrictionResponse::Continue;
@@ -494,6 +512,22 @@ impl NotifierActor {
                 warn!(%error, "failed to show friction reminder notification");
                 let _ = response_sender.send(FrictionResponse::Continue);
             }
+        });
+
+        #[cfg(not(target_os = "linux"))]
+        tokio::task::spawn_blocking(move || {
+            match notification.show() {
+                Ok(_) => {
+                    debug!(
+                        app,
+                        "friction reminder notification shown (no action support on this platform)"
+                    );
+                }
+                Err(error) => {
+                    warn!(%error, "failed to show friction reminder notification");
+                }
+            }
+            let _ = response_sender.send(FrictionResponse::Continue);
         });
     }
 
@@ -517,6 +551,7 @@ impl NotifierActor {
             .action("stop", &stop_label)
             .timeout(60000);
 
+        #[cfg(target_os = "linux")]
         tokio::task::spawn_blocking(move || match notification.show() {
             Ok(handle) => {
                 let mut response = FrictionResponse::Continue;
@@ -532,6 +567,19 @@ impl NotifierActor {
                 warn!(%error, "failed to show friction escalated notification");
                 let _ = response_sender.send(FrictionResponse::Continue);
             }
+        });
+
+        #[cfg(not(target_os = "linux"))]
+        tokio::task::spawn_blocking(move || {
+            match notification.show() {
+                Ok(_) => {
+                    debug!(app, "friction escalated notification shown (no action support on this platform)");
+                }
+                Err(error) => {
+                    warn!(%error, "failed to show friction escalated notification");
+                }
+            }
+            let _ = response_sender.send(FrictionResponse::Continue);
         });
     }
 
