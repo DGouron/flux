@@ -176,6 +176,10 @@ duration_deep_work = "Deep Work"
 duration_custom = "Custom"
 mark_as_focus = "Mark as focus"
 mark_as_distraction = "Mark as distraction"
+context_switch_details = "Context Switch Details"
+whitelist_short = "Focus"
+distraction_short = "Distract"
+short_bursts_label = "short bursts"
 
 [error]
 daemon_not_running = "⚫ Daemon is not running"

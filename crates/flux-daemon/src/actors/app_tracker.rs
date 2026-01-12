@@ -272,21 +272,26 @@ impl AppTrackerActor {
             state.app_consecutive_seconds += POLLING_INTERVAL_SECONDS;
         } else {
             if let Some(ref previous_app) = state.last_app {
-                state.context_switch_count += 1;
+                let both_whitelisted = self.distraction_config.is_whitelisted(previous_app)
+                    && self.distraction_config.is_whitelisted(application_name);
 
-                if state.app_consecutive_seconds > 0
-                    && state.app_consecutive_seconds < SHORT_BURST_THRESHOLD_SECONDS
-                {
-                    *state
-                        .short_burst_count
-                        .entry(previous_app.clone())
-                        .or_insert(0) += 1;
+                if !both_whitelisted {
+                    state.context_switch_count += 1;
 
-                    trace!(
-                        previous_app,
-                        seconds = state.app_consecutive_seconds,
-                        "short burst detected"
-                    );
+                    if state.app_consecutive_seconds > 0
+                        && state.app_consecutive_seconds < SHORT_BURST_THRESHOLD_SECONDS
+                    {
+                        *state
+                            .short_burst_count
+                            .entry(previous_app.clone())
+                            .or_insert(0) += 1;
+
+                        trace!(
+                            previous_app,
+                            seconds = state.app_consecutive_seconds,
+                            "short burst detected"
+                        );
+                    }
                 }
             }
 
@@ -514,6 +519,7 @@ impl AppTrackerActor {
             &state.short_burst_count,
             state.context_switch_count,
             &self.distraction_config.apps,
+            &self.distraction_config.whitelist_apps,
         );
 
         if report.suggestions.is_empty() {
@@ -656,6 +662,7 @@ mod tests {
             alert_after_seconds: 30,
             friction_apps: HashSet::new(),
             friction_delay_seconds: 10,
+            whitelist_apps: HashSet::new(),
         }
     }
 

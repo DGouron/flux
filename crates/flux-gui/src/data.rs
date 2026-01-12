@@ -47,6 +47,7 @@ pub struct Stats {
     pub total_context_switches: u32,
     pub total_short_bursts: u32,
     pub sessions_with_metrics: usize,
+    pub short_bursts_by_app: HashMap<String, u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +195,22 @@ impl StatsData {
 
         Ok(!is_distraction)
     }
+
+    pub fn toggle_whitelist(&mut self, app_name: &str) -> Result<bool> {
+        let is_whitelisted = self.distraction_config.is_whitelisted(app_name);
+
+        if is_whitelisted {
+            self.distraction_config.remove_from_whitelist(app_name);
+        } else {
+            self.distraction_config.add_to_whitelist(app_name);
+        }
+
+        self.distraction_config
+            .save()
+            .context("impossible de sauvegarder la configuration")?;
+
+        Ok(!is_whitelisted)
+    }
 }
 
 pub fn load_initial_data() -> Result<StatsData> {
@@ -319,15 +336,23 @@ fn compute_stats(
         }
     }
 
-    let (average_focus_score, total_context_switches, total_short_bursts) =
+    let (average_focus_score, total_context_switches, total_short_bursts, short_bursts_by_app) =
         if session_metrics.is_empty() {
-            (None, 0, 0)
+            (None, 0, 0, HashMap::new())
         } else {
             let sum_scores: u32 = session_metrics.iter().map(|m| m.focus_score() as u32).sum();
             let average = (sum_scores / session_metrics.len() as u32) as u8;
             let switches: u32 = session_metrics.iter().map(|m| m.context_switch_count).sum();
             let bursts: u32 = session_metrics.iter().map(|m| m.total_short_bursts).sum();
-            (Some(average), switches, bursts)
+
+            let mut aggregated_bursts: HashMap<String, u32> = HashMap::new();
+            for metrics in session_metrics {
+                for (app, count) in &metrics.short_bursts_by_app {
+                    *aggregated_bursts.entry(app.clone()).or_insert(0) += count;
+                }
+            }
+
+            (Some(average), switches, bursts, aggregated_bursts)
         };
 
     Stats {
@@ -342,6 +367,7 @@ fn compute_stats(
         total_context_switches,
         total_short_bursts,
         sessions_with_metrics: session_metrics.len(),
+        short_bursts_by_app,
     }
 }
 
@@ -386,5 +412,6 @@ mod tests {
         assert_eq!(stats.total_context_switches, 0);
         assert_eq!(stats.total_short_bursts, 0);
         assert_eq!(stats.sessions_with_metrics, 0);
+        assert!(stats.short_bursts_by_app.is_empty());
     }
 }

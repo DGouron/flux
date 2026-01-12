@@ -443,6 +443,7 @@ mod tests {
             alert_after_seconds: 30,
             friction_apps: HashSet::new(),
             friction_delay_seconds: 10,
+            whitelist_apps: HashSet::new(),
         }
     }
 }

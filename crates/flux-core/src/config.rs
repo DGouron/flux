@@ -141,6 +141,7 @@ pub struct DistractionConfig {
     pub alert_after_seconds: u64,
     pub friction_apps: HashSet<String>,
     pub friction_delay_seconds: u64,
+    pub whitelist_apps: HashSet<String>,
 }
 
 impl Default for DistractionConfig {
@@ -159,6 +160,7 @@ impl Default for DistractionConfig {
             alert_after_seconds: 30,
             friction_apps: HashSet::new(),
             friction_delay_seconds: 10,
+            whitelist_apps: HashSet::new(),
         }
     }
 }
@@ -175,11 +177,30 @@ impl DistractionConfig {
     }
 
     pub fn add_app(&mut self, app: &str) -> bool {
-        self.apps.insert(app.to_lowercase())
+        let app_lower = app.to_lowercase();
+        self.whitelist_apps.remove(&app_lower);
+        self.apps.insert(app_lower)
     }
 
     pub fn remove_app(&mut self, app: &str) -> bool {
         self.apps.remove(&app.to_lowercase())
+    }
+
+    pub fn is_whitelisted(&self, application_name: &str) -> bool {
+        let lowercase = application_name.to_lowercase();
+        self.whitelist_apps
+            .iter()
+            .any(|app| lowercase.contains(app))
+    }
+
+    pub fn add_to_whitelist(&mut self, app: &str) -> bool {
+        let app_lower = app.to_lowercase();
+        self.apps.remove(&app_lower);
+        self.whitelist_apps.insert(app_lower)
+    }
+
+    pub fn remove_from_whitelist(&mut self, app: &str) -> bool {
+        self.whitelist_apps.remove(&app.to_lowercase())
     }
 
     pub fn save(&self) -> Result<(), ConfigError> {
@@ -204,18 +225,11 @@ impl DistractionConfig {
         let mut lines: Vec<String> = content.lines().map(String::from).collect();
         let mut in_distractions_section = false;
         let mut apps_updated = false;
+        let mut whitelist_updated = false;
         let mut distractions_section_exists = false;
 
-        let mut sorted_apps: Vec<_> = self.apps.iter().collect();
-        sorted_apps.sort();
-        let apps_line = format!(
-            "apps = [{}]",
-            sorted_apps
-                .iter()
-                .map(|a| format!("\"{}\"", a))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        let apps_line = Self::format_hashset_line("apps", &self.apps);
+        let whitelist_line = Self::format_hashset_line("whitelist_apps", &self.whitelist_apps);
 
         for line in &mut lines {
             let trimmed = line.trim();
@@ -227,9 +241,17 @@ impl DistractionConfig {
                 }
             }
 
-            if in_distractions_section && trimmed.starts_with("apps") {
-                *line = apps_line.clone();
-                apps_updated = true;
+            if in_distractions_section {
+                if trimmed.starts_with("apps") && !trimmed.starts_with("apps =") {
+                    continue;
+                }
+                if trimmed.starts_with("apps =") {
+                    *line = apps_line.clone();
+                    apps_updated = true;
+                } else if trimmed.starts_with("whitelist_apps") {
+                    *line = whitelist_line.clone();
+                    whitelist_updated = true;
+                }
             }
         }
 
@@ -239,19 +261,42 @@ impl DistractionConfig {
             }
             lines.push("[distractions]".to_string());
             lines.push(apps_line);
+            lines.push(whitelist_line);
             return lines.join("\n");
         }
 
-        if !apps_updated {
-            for (index, line) in lines.iter().enumerate() {
-                if line.trim() == "[distractions]" {
-                    lines.insert(index + 1, apps_line);
-                    break;
-                }
+        let mut insert_after_section = None;
+        for (index, line) in lines.iter().enumerate() {
+            if line.trim() == "[distractions]" {
+                insert_after_section = Some(index);
+                break;
+            }
+        }
+
+        if let Some(section_index) = insert_after_section {
+            if !whitelist_updated {
+                lines.insert(section_index + 1, whitelist_line);
+            }
+            if !apps_updated {
+                lines.insert(section_index + 1, apps_line);
             }
         }
 
         lines.join("\n")
+    }
+
+    fn format_hashset_line(key: &str, set: &HashSet<String>) -> String {
+        let mut sorted: Vec<_> = set.iter().collect();
+        sorted.sort();
+        format!(
+            "{} = [{}]",
+            key,
+            sorted
+                .iter()
+                .map(|a| format!("\"{}\"", a))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 

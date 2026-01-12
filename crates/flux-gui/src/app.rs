@@ -4,6 +4,7 @@ use flux_core::{AppState, Config};
 use crate::data::{Period, Stats, StatsData};
 use crate::theme::Theme;
 use crate::views;
+use crate::views::overview::AppAction;
 use crate::views::session_control::{SessionController, StartSessionForm};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,14 +191,19 @@ impl FluxApp {
         ui.add_space(self.theme.spacing.lg);
 
         if self.data.has_sessions() {
-            if let Some(app_to_toggle) = views::overview::render_stats_cards(
+            if let Some(action) = views::overview::render_stats_cards(
                 ui,
                 &self.current_stats,
+                &self.data.distraction_config,
                 &self.data.translator,
                 &self.theme,
             ) {
-                if let Err(error) = self.data.toggle_distraction(&app_to_toggle) {
-                    tracing::warn!("toggle distraction failed: {}", error);
+                let result = match action {
+                    AppAction::ToggleDistraction(app) => self.data.toggle_distraction(&app),
+                    AppAction::ToggleWhitelist(app) => self.data.toggle_whitelist(&app),
+                };
+                if let Err(error) = result {
+                    tracing::warn!("toggle action failed: {}", error);
                 }
                 self.current_stats = self.data.stats_for_period(self.selected_period);
             }

@@ -1,10 +1,16 @@
+use std::collections::HashMap;
 use std::f32::consts::PI;
 
 use eframe::egui::{self, Rounding, Ui};
-use flux_core::Translator;
+use flux_core::{DistractionConfig, Translator};
 
 use crate::data::{format_duration, Period, Stats};
 use crate::theme::Theme;
+
+pub enum AppAction {
+    ToggleDistraction(String),
+    ToggleWhitelist(String),
+}
 
 pub fn render_period_selector(
     ui: &mut Ui,
@@ -52,10 +58,11 @@ pub fn render_period_selector(
 pub fn render_stats_cards(
     ui: &mut Ui,
     stats: &Stats,
+    distraction_config: &DistractionConfig,
     translator: &Translator,
     theme: &Theme,
-) -> Option<String> {
-    let mut toggled_app = None;
+) -> Option<AppAction> {
+    let mut action = None;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(theme.spacing.md, theme.spacing.md);
 
@@ -135,7 +142,7 @@ pub fn render_stats_cards(
                 false,
                 translator,
             ) {
-                toggled_app = Some(app);
+                action = Some(AppAction::ToggleDistraction(app));
             }
         });
     }
@@ -182,7 +189,7 @@ pub fn render_stats_cards(
                 true,
                 translator,
             ) {
-                toggled_app = Some(app);
+                action = Some(AppAction::ToggleDistraction(app));
             }
         });
     }
@@ -227,7 +234,21 @@ pub fn render_stats_cards(
         });
     }
 
-    toggled_app
+    if action.is_none() && !stats.short_bursts_by_app.is_empty() {
+        ui.add_space(theme.spacing.lg);
+
+        if let Some(returned_action) = render_context_switch_details(
+            ui,
+            &stats.short_bursts_by_app,
+            distraction_config,
+            translator,
+            theme,
+        ) {
+            action = Some(returned_action);
+        }
+    }
+
+    action
 }
 
 fn render_stat_card(
@@ -431,6 +452,145 @@ fn render_app_breakdown(
     }
 
     toggled_app
+}
+
+const MIN_SHORT_BURSTS_FOR_DISPLAY: u32 = 2;
+
+fn render_context_switch_details(
+    ui: &mut Ui,
+    short_bursts_by_app: &HashMap<String, u32>,
+    distraction_config: &DistractionConfig,
+    translator: &Translator,
+    theme: &Theme,
+) -> Option<AppAction> {
+    let mut apps_above_threshold: Vec<_> = short_bursts_by_app
+        .iter()
+        .filter(|(_, count)| **count >= MIN_SHORT_BURSTS_FOR_DISPLAY)
+        .collect();
+
+    if apps_above_threshold.is_empty() {
+        return None;
+    }
+
+    apps_above_threshold.sort_by(|a, b| b.1.cmp(a.1));
+    let max_bursts = *apps_above_threshold.first().map(|(_, c)| *c).unwrap_or(&1);
+    let mut action = None;
+
+    theme.card_frame().show(ui, |ui| {
+        ui.label(
+            egui::RichText::new(translator.get("gui.context_switch_details"))
+                .size(theme.typography.title)
+                .color(theme.colors.text_primary)
+                .strong(),
+        );
+        ui.add_space(theme.spacing.md);
+
+        for (app_name, burst_count) in &apps_above_threshold {
+            let is_distraction = distraction_config.is_distraction(app_name);
+            let is_whitelisted = distraction_config.is_whitelisted(app_name);
+            let progress = **burst_count as f32 / max_bursts as f32;
+
+            ui.horizontal(|ui| {
+                ui.set_min_width(ui.available_width());
+
+                ui.label(
+                    egui::RichText::new(*app_name)
+                        .size(theme.typography.body)
+                        .color(theme.colors.text_primary)
+                        .strong(),
+                );
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let whitelist_color = if is_whitelisted {
+                        theme.colors.success
+                    } else {
+                        theme.colors.text_muted
+                    };
+                    let whitelist_button = egui::Button::new(
+                        egui::RichText::new(translator.get("gui.whitelist_short"))
+                            .size(theme.typography.label)
+                            .color(whitelist_color),
+                    )
+                    .fill(if is_whitelisted {
+                        theme.colors.success.gamma_multiply(0.2)
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    })
+                    .stroke(egui::Stroke::new(1.0, whitelist_color))
+                    .rounding(Rounding::same(theme.rounding.sm));
+
+                    if ui.add(whitelist_button).clicked() {
+                        action = Some(AppAction::ToggleWhitelist((*app_name).clone()));
+                    }
+
+                    ui.add_space(theme.spacing.xs);
+
+                    let distraction_color = if is_distraction {
+                        theme.colors.warning
+                    } else {
+                        theme.colors.text_muted
+                    };
+                    let distraction_button = egui::Button::new(
+                        egui::RichText::new(translator.get("gui.distraction_short"))
+                            .size(theme.typography.label)
+                            .color(distraction_color),
+                    )
+                    .fill(if is_distraction {
+                        theme.colors.warning.gamma_multiply(0.2)
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    })
+                    .stroke(egui::Stroke::new(1.0, distraction_color))
+                    .rounding(Rounding::same(theme.rounding.sm));
+
+                    if ui.add(distraction_button).clicked() {
+                        action = Some(AppAction::ToggleDistraction((*app_name).clone()));
+                    }
+
+                    ui.add_space(theme.spacing.sm);
+
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} {}",
+                            burst_count,
+                            translator.get("gui.short_bursts_label")
+                        ))
+                        .size(theme.typography.label)
+                        .color(theme.colors.text_secondary),
+                    );
+                });
+            });
+
+            ui.add_space(theme.spacing.xs);
+
+            let bar_height = 6.0;
+            let (rect, _response) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), bar_height),
+                egui::Sense::hover(),
+            );
+
+            let rounding = Rounding::same(bar_height / 2.0);
+            let bar_color = if is_distraction {
+                theme.colors.warning
+            } else if is_whitelisted {
+                theme.colors.success
+            } else {
+                theme.colors.error
+            };
+
+            ui.painter()
+                .rect_filled(rect, rounding, theme.colors.surface_elevated);
+
+            let filled_width = rect.width() * progress;
+            let filled_rect =
+                egui::Rect::from_min_size(rect.min, egui::vec2(filled_width, bar_height));
+            ui.painter().rect_filled(filled_rect, rounding, bar_color);
+
+            ui.add_space(theme.spacing.md);
+        }
+    });
+
+    action
 }
 
 pub fn render_empty_state(ui: &mut Ui, translator: &Translator, theme: &Theme) {
