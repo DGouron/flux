@@ -40,17 +40,71 @@ impl SqliteAppTrackingRepository {
 
     fn initialize_schema(&self) -> Result<(), AppTrackingRepositoryError> {
         let connection = self.connection.lock().unwrap();
+
+        let table_exists: bool = connection
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_tracking'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+
+        if table_exists {
+            self.migrate_schema(&connection)?;
+        } else {
+            connection
+                .execute_batch(
+                    "CREATE TABLE app_tracking (
+                        session_id INTEGER NOT NULL,
+                        application_name TEXT NOT NULL,
+                        window_title TEXT NOT NULL DEFAULT '',
+                        duration_seconds INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY (session_id, application_name, window_title)
+                    );",
+                )
+                .map_err(|error| AppTrackingRepositoryError::Storage {
+                    message: error.to_string(),
+                })?;
+        }
+
+        Ok(())
+    }
+
+    fn migrate_schema(&self, connection: &Connection) -> Result<(), AppTrackingRepositoryError> {
+        let has_window_title: bool = connection
+            .query_row(
+                "SELECT 1 FROM pragma_table_info('app_tracking') WHERE name='window_title'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+
+        if has_window_title {
+            return Ok(());
+        }
+
         connection
             .execute_batch(
-                "CREATE TABLE IF NOT EXISTS app_tracking (
+                "
+                ALTER TABLE app_tracking RENAME TO app_tracking_old;
+
+                CREATE TABLE app_tracking (
                     session_id INTEGER NOT NULL,
                     application_name TEXT NOT NULL,
+                    window_title TEXT NOT NULL DEFAULT '',
                     duration_seconds INTEGER NOT NULL DEFAULT 0,
-                    PRIMARY KEY (session_id, application_name)
-                );",
+                    PRIMARY KEY (session_id, application_name, window_title)
+                );
+
+                INSERT INTO app_tracking (session_id, application_name, window_title, duration_seconds)
+                SELECT session_id, application_name, '', duration_seconds
+                FROM app_tracking_old;
+
+                DROP TABLE app_tracking_old;
+                ",
             )
             .map_err(|error| AppTrackingRepositoryError::Storage {
-                message: error.to_string(),
+                message: format!("migration failed: {}", error),
             })
     }
 }
@@ -61,13 +115,14 @@ impl AppTrackingRepository for SqliteAppTrackingRepository {
 
         connection
             .execute(
-                "INSERT INTO app_tracking (session_id, application_name, duration_seconds)
-                 VALUES (?1, ?2, ?3)
-                 ON CONFLICT (session_id, application_name)
+                "INSERT INTO app_tracking (session_id, application_name, window_title, duration_seconds)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (session_id, application_name, window_title)
                  DO UPDATE SET duration_seconds = duration_seconds + excluded.duration_seconds",
                 params![
                     usage.session_id,
                     &usage.application_name,
+                    &usage.window_title,
                     usage.duration_seconds
                 ],
             )
@@ -86,7 +141,7 @@ impl AppTrackingRepository for SqliteAppTrackingRepository {
 
         let mut statement = connection
             .prepare(
-                "SELECT session_id, application_name, duration_seconds
+                "SELECT session_id, application_name, window_title, duration_seconds
                  FROM app_tracking
                  WHERE session_id = ?1
                  ORDER BY duration_seconds DESC",
@@ -124,10 +179,10 @@ impl AppTrackingRepository for SqliteAppTrackingRepository {
             .collect::<Vec<_>>()
             .join(",");
         let query = format!(
-            "SELECT 0 as session_id, application_name, SUM(duration_seconds) as total_seconds
+            "SELECT 0 as session_id, application_name, window_title, SUM(duration_seconds) as total_seconds
              FROM app_tracking
              WHERE session_id IN ({})
-             GROUP BY application_name
+             GROUP BY application_name, window_title
              ORDER BY total_seconds DESC",
             placeholders
         );
@@ -173,11 +228,13 @@ impl AppTrackingRepository for SqliteAppTrackingRepository {
 fn row_to_app_usage(row: &rusqlite::Row) -> AppUsage {
     let session_id: i64 = row.get(0).unwrap();
     let application_name: String = row.get(1).unwrap();
-    let duration_seconds: i64 = row.get(2).unwrap();
+    let window_title: String = row.get(2).unwrap();
+    let duration_seconds: i64 = row.get(3).unwrap();
 
     AppUsage {
         session_id,
         application_name,
+        window_title,
         duration_seconds,
     }
 }
@@ -312,5 +369,97 @@ mod tests {
         assert_eq!(usages[0].application_name, "high");
         assert_eq!(usages[1].application_name, "medium");
         assert_eq!(usages[2].application_name, "low");
+    }
+
+    #[test]
+    fn save_with_title_creates_separate_entries() {
+        let repository = SqliteAppTrackingRepository::in_memory().unwrap();
+
+        repository
+            .save_or_update(&AppUsage::with_title(
+                1,
+                "firefox".to_string(),
+                "YouTube".to_string(),
+                100,
+            ))
+            .unwrap();
+        repository
+            .save_or_update(&AppUsage::with_title(
+                1,
+                "firefox".to_string(),
+                "localhost:3000".to_string(),
+                200,
+            ))
+            .unwrap();
+        repository
+            .save_or_update(&AppUsage::with_title(
+                1,
+                "firefox".to_string(),
+                "YouTube".to_string(),
+                50,
+            ))
+            .unwrap();
+
+        let usages = repository.find_by_session(1).unwrap();
+
+        assert_eq!(usages.len(), 2);
+        assert_eq!(usages[0].application_name, "firefox");
+        assert_eq!(usages[0].window_title, "localhost:3000");
+        assert_eq!(usages[0].duration_seconds, 200);
+        assert_eq!(usages[1].application_name, "firefox");
+        assert_eq!(usages[1].window_title, "YouTube");
+        assert_eq!(usages[1].duration_seconds, 150);
+    }
+
+    #[test]
+    fn default_usage_has_empty_window_title() {
+        let repository = SqliteAppTrackingRepository::in_memory().unwrap();
+
+        repository
+            .save_or_update(&AppUsage::with_duration(1, "cursor".to_string(), 60))
+            .unwrap();
+
+        let usages = repository.find_by_session(1).unwrap();
+
+        assert_eq!(usages.len(), 1);
+        assert_eq!(usages[0].window_title, "");
+    }
+
+    #[test]
+    fn find_by_sessions_groups_by_title() {
+        let repository = SqliteAppTrackingRepository::in_memory().unwrap();
+
+        repository
+            .save_or_update(&AppUsage::with_title(
+                1,
+                "firefox".to_string(),
+                "YouTube".to_string(),
+                100,
+            ))
+            .unwrap();
+        repository
+            .save_or_update(&AppUsage::with_title(
+                2,
+                "firefox".to_string(),
+                "YouTube".to_string(),
+                50,
+            ))
+            .unwrap();
+        repository
+            .save_or_update(&AppUsage::with_title(
+                1,
+                "firefox".to_string(),
+                "GitHub".to_string(),
+                30,
+            ))
+            .unwrap();
+
+        let usages = repository.find_by_sessions(&[1, 2]).unwrap();
+
+        assert_eq!(usages.len(), 2);
+        assert_eq!(usages[0].window_title, "YouTube");
+        assert_eq!(usages[0].duration_seconds, 150);
+        assert_eq!(usages[1].window_title, "GitHub");
+        assert_eq!(usages[1].duration_seconds, 30);
     }
 }

@@ -339,6 +339,7 @@ mod tests {
         use std::collections::HashSet;
         DistractionConfig {
             apps: HashSet::from(["discord".to_string(), "slack".to_string()]),
+            title_patterns: HashSet::new(),
             alert_enabled: false,
             alert_after_seconds: 30,
             friction_apps: HashSet::new(),

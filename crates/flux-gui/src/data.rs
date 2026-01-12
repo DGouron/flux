@@ -48,6 +48,8 @@ pub struct Stats {
     pub total_short_bursts: u32,
     pub sessions_with_metrics: usize,
     pub short_bursts_by_app: HashMap<String, u32>,
+    pub focus_title_breakdown: HashMap<String, HashMap<String, i64>>,
+    pub distraction_title_breakdown: HashMap<String, HashMap<String, i64>>,
 }
 
 #[derive(Debug, Clone)]
@@ -322,16 +324,44 @@ fn compute_stats(
     let mut focus_applications: HashMap<String, i64> = HashMap::new();
     let mut distraction_applications: HashMap<String, i64> = HashMap::new();
     let mut total_distraction_seconds = 0i64;
+    let mut focus_title_breakdown: HashMap<String, HashMap<String, i64>> = HashMap::new();
+    let mut distraction_title_breakdown: HashMap<String, HashMap<String, i64>> = HashMap::new();
 
     for usage in app_usages {
-        if distraction_config.is_distraction(&usage.application_name) {
+        let is_title_distraction = distraction_config.is_title_distraction(&usage.window_title);
+        let is_app_distraction = distraction_config.is_distraction(&usage.application_name);
+        let is_distraction = is_app_distraction || is_title_distraction;
+
+        if is_distraction {
             *distraction_applications
                 .entry(usage.application_name.clone())
                 .or_insert(0) += usage.duration_seconds;
             total_distraction_seconds += usage.duration_seconds;
+
+            let title = if usage.window_title.is_empty() {
+                "(sans titre)".to_string()
+            } else {
+                usage.window_title.clone()
+            };
+            *distraction_title_breakdown
+                .entry(usage.application_name.clone())
+                .or_default()
+                .entry(title)
+                .or_insert(0) += usage.duration_seconds;
         } else {
             *focus_applications
                 .entry(usage.application_name.clone())
+                .or_insert(0) += usage.duration_seconds;
+
+            let title = if usage.window_title.is_empty() {
+                "(sans titre)".to_string()
+            } else {
+                usage.window_title.clone()
+            };
+            *focus_title_breakdown
+                .entry(usage.application_name.clone())
+                .or_default()
+                .entry(title)
                 .or_insert(0) += usage.duration_seconds;
         }
     }
@@ -368,6 +398,8 @@ fn compute_stats(
         total_short_bursts,
         sessions_with_metrics: session_metrics.len(),
         short_bursts_by_app,
+        focus_title_breakdown,
+        distraction_title_breakdown,
     }
 }
 
@@ -413,5 +445,7 @@ mod tests {
         assert_eq!(stats.total_short_bursts, 0);
         assert_eq!(stats.sessions_with_metrics, 0);
         assert!(stats.short_bursts_by_app.is_empty());
+        assert!(stats.focus_title_breakdown.is_empty());
+        assert!(stats.distraction_title_breakdown.is_empty());
     }
 }

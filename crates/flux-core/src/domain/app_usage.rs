@@ -4,6 +4,7 @@ use super::SessionId;
 pub struct AppUsage {
     pub session_id: SessionId,
     pub application_name: String,
+    pub window_title: String,
     pub duration_seconds: i64,
 }
 
@@ -12,6 +13,7 @@ impl AppUsage {
         Self {
             session_id,
             application_name,
+            window_title: String::new(),
             duration_seconds: 0,
         }
     }
@@ -20,6 +22,21 @@ impl AppUsage {
         Self {
             session_id,
             application_name,
+            window_title: String::new(),
+            duration_seconds: seconds,
+        }
+    }
+
+    pub fn with_title(
+        session_id: SessionId,
+        application_name: String,
+        window_title: String,
+        seconds: i64,
+    ) -> Self {
+        Self {
+            session_id,
+            application_name,
+            window_title,
             duration_seconds: seconds,
         }
     }
@@ -35,6 +52,7 @@ mod tests {
 
         assert_eq!(usage.session_id, 1);
         assert_eq!(usage.application_name, "cursor");
+        assert_eq!(usage.window_title, "");
         assert_eq!(usage.duration_seconds, 0);
     }
 
@@ -44,6 +62,22 @@ mod tests {
 
         assert_eq!(usage.session_id, 42);
         assert_eq!(usage.application_name, "firefox");
+        assert_eq!(usage.window_title, "");
         assert_eq!(usage.duration_seconds, 300);
+    }
+
+    #[test]
+    fn with_title_creates_usage_with_title() {
+        let usage = AppUsage::with_title(
+            42,
+            "firefox".to_string(),
+            "YouTube - Video".to_string(),
+            600,
+        );
+
+        assert_eq!(usage.session_id, 42);
+        assert_eq!(usage.application_name, "firefox");
+        assert_eq!(usage.window_title, "YouTube - Video");
+        assert_eq!(usage.duration_seconds, 600);
     }
 }

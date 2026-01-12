@@ -71,10 +71,16 @@ impl AppTrackerHandle {
 
 const SHORT_BURST_THRESHOLD_SECONDS: u64 = 15;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct WindowKey {
+    app_name: String,
+    title: String,
+}
+
 struct TrackerState {
     session_id: SessionId,
     paused: bool,
-    accumulated: HashMap<String, i64>,
+    accumulated: HashMap<WindowKey, i64>,
     current_distraction: Option<String>,
     distraction_consecutive_seconds: u64,
     distraction_alert_sent: bool,
@@ -242,19 +248,28 @@ impl AppTrackerActor {
             return;
         };
 
-        let Some(application_name) = detector.get_active_application() else {
+        let Some(window_info) = detector.get_active_window_info() else {
             return;
         };
 
-        trace!(application_name = %application_name, "tracking active window");
-        *state
-            .accumulated
-            .entry(application_name.clone())
-            .or_insert(0) += POLLING_INTERVAL_SECONDS as i64;
+        let application_name = &window_info.app_name;
+        let window_title = window_info.title_or_empty();
 
-        self.track_context_switch(&application_name);
-        self.track_distraction(&application_name);
-        self.track_friction(&application_name);
+        trace!(
+            application_name = %application_name,
+            window_title = %window_title,
+            "tracking active window"
+        );
+
+        let key = WindowKey {
+            app_name: application_name.clone(),
+            title: window_title.to_string(),
+        };
+        *state.accumulated.entry(key).or_insert(0) += POLLING_INTERVAL_SECONDS as i64;
+
+        self.track_context_switch(application_name);
+        self.track_distraction(application_name, window_title);
+        self.track_friction(application_name);
     }
 
     fn track_context_switch(&mut self, application_name: &str) {
@@ -300,12 +315,13 @@ impl AppTrackerActor {
         }
     }
 
-    fn track_distraction(&mut self, application_name: &str) {
+    fn track_distraction(&mut self, application_name: &str, window_title: &str) {
         let Some(ref mut state) = self.state else {
             return;
         };
 
-        let is_distraction = self.distraction_config.is_distraction(application_name);
+        let is_distraction = self.distraction_config.is_distraction(application_name)
+            || self.distraction_config.is_title_distraction(window_title);
 
         if is_distraction {
             let same_distraction = state
@@ -543,17 +559,24 @@ impl AppTrackerActor {
     }
 
     fn flush_to_repository(repository: &Arc<dyn AppTrackingRepository>, state: &TrackerState) {
-        for (application_name, seconds) in &state.accumulated {
+        for (key, seconds) in &state.accumulated {
             if *seconds > 0 {
-                let usage =
-                    AppUsage::with_duration(state.session_id, application_name.clone(), *seconds);
+                let usage = AppUsage::with_title(
+                    state.session_id,
+                    key.app_name.clone(),
+                    key.title.clone(),
+                    *seconds,
+                );
 
                 if let Err(error) = repository.save_or_update(&usage) {
-                    error!(%error, application_name, "failed to persist app usage");
+                    error!(%error, app_name = key.app_name, title = key.title, "failed to persist app usage");
                 } else {
                     debug!(
                         session_id = state.session_id,
-                        application_name, seconds, "flushed app usage to database"
+                        app_name = key.app_name,
+                        title = key.title,
+                        seconds,
+                        "flushed app usage to database"
                     );
                 }
             }
@@ -658,6 +681,7 @@ mod tests {
     fn create_test_distraction_config() -> DistractionConfig {
         DistractionConfig {
             apps: HashSet::from(["discord".to_string(), "slack".to_string()]),
+            title_patterns: HashSet::new(),
             alert_enabled: false,
             alert_after_seconds: 30,
             friction_apps: HashSet::new(),
@@ -709,7 +733,22 @@ mod tests {
         actor.state = Some(TrackerState {
             session_id: 42,
             paused: false,
-            accumulated: HashMap::from([("cursor".to_string(), 100), ("firefox".to_string(), 50)]),
+            accumulated: HashMap::from([
+                (
+                    WindowKey {
+                        app_name: "cursor".to_string(),
+                        title: String::new(),
+                    },
+                    100,
+                ),
+                (
+                    WindowKey {
+                        app_name: "firefox".to_string(),
+                        title: String::new(),
+                    },
+                    50,
+                ),
+            ]),
             current_distraction: None,
             distraction_consecutive_seconds: 0,
             distraction_alert_sent: false,
@@ -756,7 +795,7 @@ mod tests {
             friction_response_pending: None,
         });
 
-        actor.track_distraction("Discord");
+        actor.track_distraction("Discord", "");
 
         let state = actor.state.as_ref().unwrap();
         assert_eq!(state.current_distraction, Some("Discord".to_string()));
@@ -765,7 +804,7 @@ mod tests {
             POLLING_INTERVAL_SECONDS
         );
 
-        actor.track_distraction("Discord");
+        actor.track_distraction("Discord", "");
 
         let state = actor.state.as_ref().unwrap();
         assert_eq!(
@@ -801,7 +840,7 @@ mod tests {
             friction_response_pending: None,
         });
 
-        actor.track_distraction("cursor");
+        actor.track_distraction("cursor", "");
 
         let state = actor.state.as_ref().unwrap();
         assert_eq!(state.current_distraction, None);
@@ -836,7 +875,7 @@ mod tests {
             friction_response_pending: None,
         });
 
-        actor.track_distraction("Slack");
+        actor.track_distraction("Slack", "");
 
         let state = actor.state.as_ref().unwrap();
         assert_eq!(state.current_distraction, Some("Slack".to_string()));

@@ -137,6 +137,7 @@ impl Default for DigestConfig {
 #[serde(default)]
 pub struct DistractionConfig {
     pub apps: HashSet<String>,
+    pub title_patterns: HashSet<String>,
     pub alert_enabled: bool,
     pub alert_after_seconds: u64,
     pub friction_apps: HashSet<String>,
@@ -156,6 +157,7 @@ impl Default for DistractionConfig {
                 "youtube".to_string(),
                 "reddit".to_string(),
             ]),
+            title_patterns: HashSet::new(),
             alert_enabled: false,
             alert_after_seconds: 30,
             friction_apps: HashSet::new(),
@@ -169,6 +171,16 @@ impl DistractionConfig {
     pub fn is_distraction(&self, application_name: &str) -> bool {
         let lowercase = application_name.to_lowercase();
         self.apps.iter().any(|app| lowercase.contains(app))
+    }
+
+    pub fn is_title_distraction(&self, window_title: &str) -> bool {
+        if window_title.is_empty() {
+            return false;
+        }
+        let lowercase = window_title.to_lowercase();
+        self.title_patterns
+            .iter()
+            .any(|pattern| lowercase.contains(pattern))
     }
 
     pub fn is_friction(&self, application_name: &str) -> bool {
@@ -530,6 +542,18 @@ mod tests {
         assert!(!config.is_distraction("cursor"));
         assert!(!config.is_distraction("firefox"));
         assert!(!config.is_distraction("code"));
+    }
+
+    #[test]
+    fn is_title_distraction_matches_configured_patterns() {
+        let mut config = DistractionConfig::default();
+        config.title_patterns = HashSet::from(["youtube".to_string(), "linkedin".to_string()]);
+
+        assert!(config.is_title_distraction("YouTube - Video Name"));
+        assert!(config.is_title_distraction("linkedin.com/feed"));
+        assert!(!config.is_title_distraction("localhost:3000"));
+        assert!(!config.is_title_distraction("GitHub - Pull Request"));
+        assert!(!config.is_title_distraction(""));
     }
 
     #[test]

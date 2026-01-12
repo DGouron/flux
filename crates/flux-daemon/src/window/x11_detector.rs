@@ -6,7 +6,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, Window};
 use x11rb::rust_connection::RustConnection;
 
-use super::WindowDetector;
+use super::{WindowDetector, WindowInfo};
 
 pub struct X11WindowDetector {
     connection: RustConnection,
@@ -14,6 +14,9 @@ pub struct X11WindowDetector {
     active_window_atom: u32,
     wm_class_atom: u32,
     wm_pid_atom: u32,
+    net_wm_name_atom: u32,
+    wm_name_atom: u32,
+    utf8_string_atom: u32,
 }
 
 impl X11WindowDetector {
@@ -43,6 +46,22 @@ impl X11WindowDetector {
             .ok()?
             .atom;
 
+        let net_wm_name_atom = connection
+            .intern_atom(false, b"_NET_WM_NAME")
+            .ok()?
+            .reply()
+            .ok()?
+            .atom;
+
+        let wm_name_atom = AtomEnum::WM_NAME.into();
+
+        let utf8_string_atom = connection
+            .intern_atom(false, b"UTF8_STRING")
+            .ok()?
+            .reply()
+            .ok()?
+            .atom;
+
         debug!("X11 window detector initialized");
 
         Some(Self {
@@ -51,6 +70,9 @@ impl X11WindowDetector {
             active_window_atom,
             wm_class_atom,
             wm_pid_atom,
+            net_wm_name_atom,
+            wm_name_atom,
+            utf8_string_atom,
         })
     }
 
@@ -103,6 +125,53 @@ impl X11WindowDetector {
             .collect();
 
         parts.get(1).or(parts.first()).map(|s| s.to_string())
+    }
+
+    fn get_window_title(&self, window: Window) -> Option<String> {
+        if let Some(title) = self.get_net_wm_name(window) {
+            return Some(title);
+        }
+
+        self.get_wm_name(window)
+    }
+
+    fn get_net_wm_name(&self, window: Window) -> Option<String> {
+        let reply = self
+            .connection
+            .get_property(
+                false,
+                window,
+                self.net_wm_name_atom,
+                self.utf8_string_atom,
+                0,
+                2048,
+            )
+            .ok()?
+            .reply()
+            .ok()?;
+
+        if reply.value.is_empty() {
+            return None;
+        }
+
+        String::from_utf8(reply.value).ok()
+    }
+
+    fn get_wm_name(&self, window: Window) -> Option<String> {
+        let reply = self
+            .connection
+            .get_property(false, window, self.wm_name_atom, AtomEnum::STRING, 0, 2048)
+            .ok()?
+            .reply()
+            .ok()?;
+
+        if reply.value.is_empty() {
+            return None;
+        }
+
+        std::str::from_utf8(&reply.value)
+            .ok()
+            .map(|s| s.trim_end_matches('\0').to_string())
     }
 
     fn get_window_pid(&self, window: Window) -> Option<u32> {
@@ -186,9 +255,10 @@ impl X11WindowDetector {
 }
 
 impl WindowDetector for X11WindowDetector {
-    fn get_active_application(&self) -> Option<String> {
+    fn get_active_window_info(&self) -> Option<WindowInfo> {
         let window = self.get_active_window()?;
         let window_class = self.get_window_class(window)?;
+        let window_title = self.get_window_title(window);
 
         let lowercase_class = window_class.to_lowercase();
 
@@ -196,13 +266,13 @@ impl WindowDetector for X11WindowDetector {
             if let Some(pid) = self.get_window_pid(window) {
                 if self.is_claude_code_running(pid) {
                     debug!(window_class = %window_class, "detected Claude Code in editor");
-                    return Some("Claude Code".to_string());
+                    return Some(WindowInfo::new("Claude Code".to_string(), window_title));
                 }
             }
         }
 
-        debug!(window_class = %window_class, "detected active application");
-        Some(window_class)
+        debug!(window_class = %window_class, window_title = ?window_title, "detected active window");
+        Some(WindowInfo::new(window_class, window_title))
     }
 }
 

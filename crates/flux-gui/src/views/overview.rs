@@ -137,6 +137,7 @@ pub fn render_stats_cards(
             if let Some(app) = render_app_breakdown(
                 ui,
                 &stats.focus_applications,
+                &stats.focus_title_breakdown,
                 theme,
                 theme.colors.accent,
                 false,
@@ -184,6 +185,7 @@ pub fn render_stats_cards(
             if let Some(app) = render_app_breakdown(
                 ui,
                 &stats.distraction_applications,
+                &stats.distraction_title_breakdown,
                 theme,
                 theme.colors.warning,
                 true,
@@ -363,6 +365,7 @@ fn render_mode_breakdown(ui: &mut Ui, stats: &Stats, theme: &Theme) {
 fn render_app_breakdown(
     ui: &mut Ui,
     applications: &std::collections::HashMap<String, i64>,
+    title_breakdown: &HashMap<String, HashMap<String, i64>>,
     theme: &Theme,
     bar_color: egui::Color32,
     is_distraction_section: bool,
@@ -448,10 +451,96 @@ fn render_app_breakdown(
         let filled_rect = egui::Rect::from_min_size(rect.min, egui::vec2(filled_width, bar_height));
         ui.painter().rect_filled(filled_rect, rounding, bar_color);
 
+        if let Some(titles) = title_breakdown.get(application) {
+            if titles.len() > 1 || !titles.contains_key("(sans titre)") {
+                ui.add_space(theme.spacing.xs);
+                render_title_breakdown(ui, titles, theme, bar_color);
+            }
+        }
+
         ui.add_space(theme.spacing.md);
     }
 
     toggled_app
+}
+
+fn render_title_breakdown(
+    ui: &mut Ui,
+    titles: &HashMap<String, i64>,
+    theme: &Theme,
+    bar_color: egui::Color32,
+) {
+    let mut sorted_titles: Vec<_> = titles.iter().collect();
+    sorted_titles.sort_by(|a, b| b.1.cmp(a.1));
+
+    let total: i64 = sorted_titles.iter().map(|(_, s)| **s).sum();
+    let max_to_show = 5;
+
+    ui.indent("title_breakdown", |ui| {
+        for (title, seconds) in sorted_titles.iter().take(max_to_show) {
+            let percentage = if total > 0 {
+                (**seconds as f64 / total as f64 * 100.0) as u32
+            } else {
+                0
+            };
+
+            let display_title = if title.len() > 50 {
+                format!("{}...", &title[..47])
+            } else {
+                (*title).clone()
+            };
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("↳")
+                        .size(theme.typography.label)
+                        .color(theme.colors.text_muted),
+                );
+                ui.label(
+                    egui::RichText::new(&display_title)
+                        .size(theme.typography.label)
+                        .color(theme.colors.text_secondary),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("{}%", percentage))
+                            .size(theme.typography.label)
+                            .color(theme.colors.text_muted),
+                    );
+                    ui.label(
+                        egui::RichText::new(format_duration(**seconds))
+                            .size(theme.typography.label)
+                            .color(theme.colors.text_secondary),
+                    );
+                });
+            });
+
+            let bar_height = 3.0;
+            let progress = **seconds as f32 / total.max(1) as f32;
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), bar_height),
+                egui::Sense::hover(),
+            );
+            let rounding = Rounding::same(bar_height / 2.0);
+            ui.painter()
+                .rect_filled(rect, rounding, theme.colors.surface_elevated);
+            let filled_width = rect.width() * progress;
+            let filled_rect =
+                egui::Rect::from_min_size(rect.min, egui::vec2(filled_width, bar_height));
+            ui.painter()
+                .rect_filled(filled_rect, rounding, bar_color.gamma_multiply(0.6));
+
+            ui.add_space(theme.spacing.xs);
+        }
+
+        if sorted_titles.len() > max_to_show {
+            ui.label(
+                egui::RichText::new(format!("... +{} autres", sorted_titles.len() - max_to_show))
+                    .size(theme.typography.label)
+                    .color(theme.colors.text_muted),
+            );
+        }
+    });
 }
 
 const MIN_SHORT_BURSTS_FOR_DISPLAY: u32 = 2;
