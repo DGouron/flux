@@ -515,20 +515,20 @@ impl NotifierActor {
         });
 
         #[cfg(not(target_os = "linux"))]
-        tokio::task::spawn_blocking(move || {
-            match notification.show() {
-                Ok(_) => {
-                    debug!(
-                        app,
-                        "friction reminder notification shown (no action support on this platform)"
-                    );
+        {
+            let _ = app;
+            tokio::task::spawn_blocking(move || {
+                match notification.show() {
+                    Ok(_) => {
+                        debug!("friction reminder notification shown (no action support on this platform)");
+                    }
+                    Err(error) => {
+                        warn!(%error, "failed to show friction reminder notification");
+                    }
                 }
-                Err(error) => {
-                    warn!(%error, "failed to show friction reminder notification");
-                }
-            }
-            let _ = response_sender.send(FrictionResponse::Continue);
-        });
+                let _ = response_sender.send(FrictionResponse::Continue);
+            });
+        }
     }
 
     fn send_friction_escalated_notification(
@@ -570,17 +570,20 @@ impl NotifierActor {
         });
 
         #[cfg(not(target_os = "linux"))]
-        tokio::task::spawn_blocking(move || {
-            match notification.show() {
-                Ok(_) => {
-                    debug!(app, "friction escalated notification shown (no action support on this platform)");
+        {
+            let _ = app;
+            tokio::task::spawn_blocking(move || {
+                match notification.show() {
+                    Ok(_) => {
+                        debug!("friction escalated notification shown (no action support on this platform)");
+                    }
+                    Err(error) => {
+                        warn!(%error, "failed to show friction escalated notification");
+                    }
                 }
-                Err(error) => {
-                    warn!(%error, "failed to show friction escalated notification");
-                }
-            }
-            let _ = response_sender.send(FrictionResponse::Continue);
-        });
+                let _ = response_sender.send(FrictionResponse::Continue);
+            });
+        }
     }
 
     fn send_weekly_digest_notification(&self, total_time: &str, session_count: usize) {
