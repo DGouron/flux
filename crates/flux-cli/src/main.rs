@@ -84,6 +84,27 @@ enum Commands {
         #[command(subcommand)]
         action: SuggestionsAction,
     },
+    /// Gérer les profils de configuration
+    Profile {
+        #[command(subcommand)]
+        action: ProfileAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProfileAction {
+    /// Afficher la liste des profils disponibles
+    List,
+    /// Afficher les détails d'un profil
+    Show {
+        /// Nom du profil à afficher (défaut: profil actif)
+        name: Option<String>,
+    },
+    /// Activer un profil
+    Use {
+        /// Nom du profil à activer
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -148,6 +169,11 @@ async fn main() {
         Commands::Suggestions { action } => match action {
             SuggestionsAction::List => commands::suggestions::list(),
             SuggestionsAction::Clear => commands::suggestions::clear(),
+        },
+        Commands::Profile { action } => match action {
+            ProfileAction::List => commands::profile::list(),
+            ProfileAction::Show { name } => commands::profile::show(name),
+            ProfileAction::Use { name } => commands::profile::use_profile(&name),
         },
     };
 

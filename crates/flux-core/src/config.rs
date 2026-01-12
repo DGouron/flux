@@ -1,8 +1,12 @@
 use crate::i18n::Language;
+use crate::state::AppState;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use thiserror::Error;
+
+static DEFAULT_PROFILE: LazyLock<Profile> = LazyLock::new(Profile::default);
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -24,15 +28,31 @@ pub enum ConfigError {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
-pub struct Config {
-    pub general: GeneralConfig,
+pub struct Profile {
     pub focus: FocusConfig,
     pub notifications: NotificationConfig,
-    pub tray: TrayConfig,
     pub distractions: DistractionConfig,
     pub digest: DigestConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct Config {
+    pub general: GeneralConfig,
+    pub tray: TrayConfig,
     pub gitlab: Option<ProviderConfig>,
     pub github: Option<ProviderConfig>,
+    #[serde(default)]
+    pub profile: HashMap<String, Profile>,
+
+    #[serde(default)]
+    focus: Option<FocusConfig>,
+    #[serde(default)]
+    notifications: Option<NotificationConfig>,
+    #[serde(default)]
+    distractions: Option<DistractionConfig>,
+    #[serde(default)]
+    digest: Option<DigestConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -244,8 +264,33 @@ impl Config {
         }
 
         let content = std::fs::read_to_string(&path)?;
-        let config: Config = toml::from_str(&content)?;
+        let mut config: Config = toml::from_str(&content)?;
+        config.migrate_legacy();
         Ok(config)
+    }
+
+    fn migrate_legacy(&mut self) {
+        if self.profile.is_empty() {
+            let profile = Profile {
+                focus: self.focus.take().unwrap_or_default(),
+                notifications: self.notifications.take().unwrap_or_default(),
+                distractions: self.distractions.take().unwrap_or_default(),
+                digest: self.digest.take().unwrap_or_default(),
+            };
+            self.profile.insert("default".to_string(), profile);
+        }
+    }
+
+    pub fn active_profile(&self) -> &Profile {
+        let state = AppState::load();
+        self.profile
+            .get(&state.active_profile)
+            .or_else(|| self.profile.get("default"))
+            .unwrap_or(&DEFAULT_PROFILE)
+    }
+
+    pub fn profile_names(&self) -> Vec<&str> {
+        self.profile.keys().map(|s| s.as_str()).collect()
     }
 
     pub fn config_path() -> PathBuf {
@@ -254,45 +299,76 @@ impl Config {
             .join("flux")
             .join("config.toml")
     }
+
+    pub fn focus(&self) -> &FocusConfig {
+        &self.active_profile().focus
+    }
+
+    pub fn notifications(&self) -> &NotificationConfig {
+        &self.active_profile().notifications
+    }
+
+    pub fn distractions(&self) -> &DistractionConfig {
+        &self.active_profile().distractions
+    }
+
+    pub fn digest(&self) -> &DigestConfig {
+        &self.active_profile().digest
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn parse_with_migration(toml_content: &str) -> Config {
+        let mut config: Config = toml::from_str(toml_content).unwrap();
+        config.migrate_legacy();
+        config
+    }
+
+    #[test]
+    fn default_profile_has_sensible_values() {
+        let profile = Profile::default();
+
+        assert_eq!(profile.focus.default_duration_minutes, 25);
+        assert_eq!(profile.focus.check_in_interval_minutes, 25);
+        assert_eq!(profile.focus.check_in_timeout_seconds, 120);
+        assert!(profile.notifications.sound_enabled);
+        assert!(!profile.distractions.alert_enabled);
+        assert_eq!(profile.distractions.alert_after_seconds, 30);
+        assert!(profile.distractions.apps.contains("discord"));
+    }
+
     #[test]
     fn default_config_has_sensible_values() {
-        let config = Config::default();
+        let mut config = Config::default();
+        config.migrate_legacy();
 
         assert_eq!(config.general.language, Language::En);
-        assert_eq!(config.focus.default_duration_minutes, 25);
-        assert_eq!(config.focus.check_in_interval_minutes, 25);
-        assert_eq!(config.focus.check_in_timeout_seconds, 120);
-        assert!(config.notifications.sound_enabled);
         assert!(!config.tray.enabled);
-        assert!(!config.distractions.alert_enabled);
-        assert_eq!(config.distractions.alert_after_seconds, 30);
-        assert!(config.distractions.apps.contains("discord"));
         assert!(config.gitlab.is_none());
         assert!(config.github.is_none());
+        assert!(config.profile.contains_key("default"));
     }
 
     #[test]
-    fn parse_minimal_config() {
-        let toml = r#"
+    fn parse_legacy_minimal_config() {
+        let config = parse_with_migration(
+            r#"
             [focus]
             default_duration_minutes = 50
-        "#;
+        "#,
+        );
 
-        let config: Config = toml::from_str(toml).unwrap();
-
-        assert_eq!(config.focus.default_duration_minutes, 50);
-        assert_eq!(config.focus.check_in_interval_minutes, 25);
+        assert_eq!(config.focus().default_duration_minutes, 50);
+        assert_eq!(config.focus().check_in_interval_minutes, 25);
     }
 
     #[test]
-    fn parse_full_config() {
-        let toml = r#"
+    fn parse_legacy_full_config() {
+        let config = parse_with_migration(
+            r#"
             [focus]
             default_duration_minutes = 45
             check_in_interval_minutes = 15
@@ -307,15 +383,14 @@ mod tests {
 
             [github]
             base_url = "https://github.com"
-        "#;
+        "#,
+        );
 
-        let config: Config = toml::from_str(toml).unwrap();
-
-        assert_eq!(config.focus.default_duration_minutes, 45);
-        assert_eq!(config.focus.check_in_interval_minutes, 15);
-        assert!(!config.notifications.sound_enabled);
+        assert_eq!(config.focus().default_duration_minutes, 45);
+        assert_eq!(config.focus().check_in_interval_minutes, 15);
+        assert!(!config.notifications().sound_enabled);
         assert!(matches!(
-            config.notifications.urgency,
+            config.notifications().urgency,
             NotificationUrgency::Critical
         ));
         assert_eq!(
@@ -330,56 +405,59 @@ mod tests {
 
     #[test]
     fn parse_tray_config() {
-        let toml = r#"
+        let config: Config = toml::from_str(
+            r#"
             [tray]
             enabled = true
-        "#;
-
-        let config: Config = toml::from_str(toml).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert!(config.tray.enabled);
     }
 
     #[test]
     fn parse_language_config() {
-        let toml = r#"
+        let config: Config = toml::from_str(
+            r#"
             [general]
             language = "fr"
-        "#;
-
-        let config: Config = toml::from_str(toml).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(config.general.language, Language::Fr);
     }
 
     #[test]
     fn missing_language_defaults_to_english() {
-        let toml = r#"
+        let config: Config = toml::from_str(
+            r#"
             [focus]
             default_duration_minutes = 25
-        "#;
-
-        let config: Config = toml::from_str(toml).unwrap();
+        "#,
+        )
+        .unwrap();
 
         assert_eq!(config.general.language, Language::En);
     }
 
     #[test]
-    fn parse_distractions_config() {
-        let toml = r#"
+    fn parse_legacy_distractions_config() {
+        let config = parse_with_migration(
+            r#"
             [distractions]
             apps = ["discord", "slack", "twitter"]
             alert_enabled = true
             alert_after_seconds = 60
-        "#;
+        "#,
+        );
 
-        let config: Config = toml::from_str(toml).unwrap();
-
-        assert!(config.distractions.alert_enabled);
-        assert_eq!(config.distractions.alert_after_seconds, 60);
-        assert_eq!(config.distractions.apps.len(), 3);
-        assert!(config.distractions.apps.contains("discord"));
-        assert!(config.distractions.apps.contains("slack"));
+        assert!(config.distractions().alert_enabled);
+        assert_eq!(config.distractions().alert_after_seconds, 60);
+        assert_eq!(config.distractions().apps.len(), 3);
+        assert!(config.distractions().apps.contains("discord"));
+        assert!(config.distractions().apps.contains("slack"));
     }
 
     #[test]
@@ -419,18 +497,70 @@ mod tests {
     }
 
     #[test]
-    fn parse_digest_config() {
-        let toml = r#"
+    fn parse_legacy_digest_config() {
+        let config = parse_with_migration(
+            r#"
             [digest]
             enabled = false
             day = "sunday"
             hour = 18
-        "#;
+        "#,
+        );
 
-        let config: Config = toml::from_str(toml).unwrap();
+        assert!(!config.digest().enabled);
+        assert_eq!(config.digest().day, "sunday");
+        assert_eq!(config.digest().hour, 18);
+    }
 
-        assert!(!config.digest.enabled);
-        assert_eq!(config.digest.day, "sunday");
-        assert_eq!(config.digest.hour, 18);
+    #[test]
+    fn parse_profile_config() {
+        let config: Config = toml::from_str(
+            r#"
+            [general]
+            language = "fr"
+
+            [profile.default.focus]
+            default_duration_minutes = 25
+
+            [profile.deep_focus.focus]
+            default_duration_minutes = 50
+
+            [profile.deep_focus.distractions]
+            apps = ["discord", "slack", "twitter"]
+            alert_enabled = true
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(config.profile.len(), 2);
+        assert!(config.profile.contains_key("default"));
+        assert!(config.profile.contains_key("deep_focus"));
+
+        let deep_focus = config.profile.get("deep_focus").unwrap();
+        assert_eq!(deep_focus.focus.default_duration_minutes, 50);
+        assert!(deep_focus.distractions.alert_enabled);
+    }
+
+    #[test]
+    fn profile_names_returns_all_profiles() {
+        let config: Config = toml::from_str(
+            r#"
+            [profile.default.focus]
+            default_duration_minutes = 25
+
+            [profile.work.focus]
+            default_duration_minutes = 45
+
+            [profile.creative.focus]
+            default_duration_minutes = 60
+        "#,
+        )
+        .unwrap();
+
+        let names = config.profile_names();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"default"));
+        assert!(names.contains(&"work"));
+        assert!(names.contains(&"creative"));
     }
 }

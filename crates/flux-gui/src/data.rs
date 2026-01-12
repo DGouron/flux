@@ -174,7 +174,7 @@ impl StatsData {
         self.database_path = database_path;
 
         let config = Config::load().unwrap_or_default();
-        self.distraction_config = config.distractions;
+        self.distraction_config = config.distractions().clone();
 
         Ok(())
     }
@@ -199,7 +199,7 @@ impl StatsData {
 pub fn load_initial_data() -> Result<StatsData> {
     let config = Config::load().unwrap_or_default();
     let translator = Translator::new(config.general.language);
-    let distraction_config = config.distractions;
+    let distraction_config = config.distractions().clone();
     let (sessions, database_path) = load_all_sessions()?;
 
     let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();

@@ -51,7 +51,7 @@ pub async fn execute(period: Period) -> Result<()> {
     let session_ids: Vec<i64> = sessions.iter().filter_map(|s| s.id).collect();
     let app_usages = fetch_app_tracking(&session_ids);
 
-    let stats = compute_stats(&sessions, &app_usages, &config.distractions);
+    let stats = compute_stats(&sessions, &app_usages, config.distractions());
     display_stats(&stats, period, &translator);
 
     Ok(())

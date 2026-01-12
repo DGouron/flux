@@ -13,7 +13,7 @@ pub async fn execute() -> Result<()> {
     let translator = Translator::new(config.general.language);
     let repository = open_repository()?;
 
-    let digest_stats = compute_digest_stats(&repository, &config.distractions)?;
+    let digest_stats = compute_digest_stats(&repository, config.distractions())?;
 
     if digest_stats.current_week.session_count == 0 {
         println!("{}", translator.get("command.digest_no_data"));

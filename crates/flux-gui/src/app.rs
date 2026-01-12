@@ -1,4 +1,5 @@
 use eframe::egui::{self, Rounding, ScrollArea};
+use flux_core::{AppState, Config};
 
 use crate::data::{Period, Stats, StatsData};
 use crate::theme::Theme;
@@ -91,6 +92,12 @@ impl eframe::App for FluxApp {
                             .color(self.theme.colors.text_primary)
                             .strong(),
                     );
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if self.render_profile_selector(ui) && self.data.reload().is_ok() {
+                            self.update_stats();
+                        }
+                    });
                 });
 
                 ui.add_space(self.theme.spacing.md);
@@ -306,5 +313,38 @@ impl FluxApp {
                     }
                 });
             });
+    }
+
+    fn render_profile_selector(&self, ui: &mut egui::Ui) -> bool {
+        let config = Config::load().unwrap_or_default();
+        let mut state = AppState::load();
+        let mut changed = false;
+
+        let profiles: Vec<String> = config
+            .profile_names()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        if profiles.len() <= 1 {
+            return false;
+        }
+
+        egui::ComboBox::from_id_salt("profile_selector")
+            .selected_text(&state.active_profile)
+            .show_ui(ui, |ui| {
+                for name in &profiles {
+                    if ui
+                        .selectable_label(state.active_profile == *name, name)
+                        .clicked()
+                    {
+                        state.set_active_profile(name);
+                        let _ = state.save();
+                        changed = true;
+                    }
+                }
+            });
+
+        changed
     }
 }

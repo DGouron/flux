@@ -6,6 +6,7 @@ pub mod distractions;
 mod init;
 mod lang;
 mod pause;
+pub mod profile;
 mod resume;
 mod start;
 mod stats;

@@ -8,10 +8,11 @@ pub mod domain;
 pub mod i18n;
 pub mod ports;
 pub mod secrets;
+pub mod state;
 
 pub use config::{
     Config, ConfigError, DigestConfig, DistractionConfig, FocusConfig, GeneralConfig,
-    NotificationConfig, NotificationUrgency, TrayConfig,
+    NotificationConfig, NotificationUrgency, Profile, TrayConfig,
 };
 pub use domain::{
     AppUsage, DigestStats, DistractionSuggestion, FocusMode, Provider, ReviewAction, ReviewEvent,
@@ -26,3 +27,4 @@ pub use ports::{
 pub use secrets::{
     resolve_github_credentials, resolve_gitlab_credentials, ProviderCredentials, SecretsError,
 };
+pub use state::AppState;

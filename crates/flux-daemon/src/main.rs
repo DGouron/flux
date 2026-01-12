@@ -40,8 +40,8 @@ async fn main() -> Result<()> {
     });
 
     let (notifier_actor, notifier_handle) = NotifierActor::new(
-        config.notifications.urgency.clone(),
-        config.notifications.sound_enabled,
+        config.notifications().urgency.clone(),
+        config.notifications().sound_enabled,
     );
     tokio::spawn(notifier_actor.run());
 
@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
         let (app_tracker_actor, handle) = AppTrackerActor::new(
             repository,
             metrics_repository,
-            config.distractions.clone(),
+            config.distractions().clone(),
             notifier_handle.clone(),
         );
         tokio::spawn(app_tracker_actor.run());
@@ -88,8 +88,8 @@ async fn main() -> Result<()> {
     {
         let digest_scheduler = DigestSchedulerActor::new(
             notifier_handle.clone(),
-            config.digest.clone(),
-            config.distractions.clone(),
+            config.digest().clone(),
+            config.distractions().clone(),
             session_repo,
             app_repo,
         );

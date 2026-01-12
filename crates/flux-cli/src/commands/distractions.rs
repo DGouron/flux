@@ -13,7 +13,7 @@ pub fn list() -> Result<()> {
         translator.get("command.distractions_current_list")
     );
 
-    let mut apps: Vec<_> = config.distractions.apps.iter().collect();
+    let mut apps: Vec<_> = config.distractions().apps.iter().collect();
     apps.sort();
 
     for (index, app) in apps.iter().enumerate() {
@@ -35,7 +35,7 @@ pub fn add(app: &str) -> Result<()> {
 
     let app_lower = app.to_lowercase();
 
-    if config.distractions.apps.contains(&app_lower) {
+    if config.distractions().apps.contains(&app_lower) {
         println!(
             "{}",
             translator.format(
@@ -46,7 +46,7 @@ pub fn add(app: &str) -> Result<()> {
         return Ok(());
     }
 
-    let mut new_apps = config.distractions.apps.clone();
+    let mut new_apps = config.distractions().apps.clone();
     new_apps.insert(app_lower.clone());
 
     update_distractions_config(&new_apps)?;
@@ -64,7 +64,7 @@ pub fn remove(app: &str) -> Result<()> {
 
     let app_lower = app.to_lowercase();
 
-    if !config.distractions.apps.contains(&app_lower) {
+    if !config.distractions().apps.contains(&app_lower) {
         println!(
             "{}",
             translator.format("command.distractions_not_found", &[("app", &app_lower)])
@@ -72,7 +72,7 @@ pub fn remove(app: &str) -> Result<()> {
         return Ok(());
     }
 
-    let mut new_apps = config.distractions.apps.clone();
+    let mut new_apps = config.distractions().apps.clone();
     new_apps.remove(&app_lower);
 
     update_distractions_config(&new_apps)?;

@@ -78,6 +78,13 @@ digest_delta_positive = "+{value}"
 digest_vs_last_week = "vs semaine dernière"
 digest_no_data = "Pas de données pour cette semaine"
 
+# Profile command
+profile_list_header = "Profils disponibles"
+profile_header = "Profil"
+profile_active = "actif"
+profile_switched = "Profil actif : {name}"
+profile_not_found = "Profil '{name}' introuvable"
+
 # Distractions command
 distractions_current_list = "Applications de distraction configurées"
 distractions_already_exists = "'{app}' est déjà dans la liste des distractions"
