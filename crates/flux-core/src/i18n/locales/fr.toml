@@ -159,6 +159,8 @@ friction_no_continue = "Non, continuer"
 friction_yes_stop = "Oui, stopper"
 digest_title = "Résumé de la semaine"
 digest_body = "{time} cette semaine ({sessions} sessions)"
+veille_reminder_title = "Rappel de veille"
+veille_reminder_body = "Ta veille dure depuis {minutes} minutes"
 
 [gui]
 tab_overview = "Vue d'ensemble"

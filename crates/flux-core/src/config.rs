@@ -67,6 +67,7 @@ pub struct FocusConfig {
     pub default_duration_minutes: u64,
     pub check_in_interval_minutes: u64,
     pub check_in_timeout_seconds: u64,
+    pub veille_reminder_minutes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -96,6 +97,7 @@ impl Default for FocusConfig {
             default_duration_minutes: 25,
             check_in_interval_minutes: 25,
             check_in_timeout_seconds: 120,
+            veille_reminder_minutes: 60,
         }
     }
 }
@@ -416,6 +418,7 @@ mod tests {
         assert_eq!(profile.focus.default_duration_minutes, 25);
         assert_eq!(profile.focus.check_in_interval_minutes, 25);
         assert_eq!(profile.focus.check_in_timeout_seconds, 120);
+        assert_eq!(profile.focus.veille_reminder_minutes, 60);
         assert!(profile.notifications.sound_enabled);
         assert!(!profile.distractions.alert_enabled);
         assert_eq!(profile.distractions.alert_after_seconds, 30);

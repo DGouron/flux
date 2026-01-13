@@ -33,6 +33,7 @@ struct TimerState {
     last_tick: Instant,
     paused: bool,
     check_ins_done: [bool; 3],
+    veille_reminder_sent: bool,
 }
 
 const CHECK_IN_THRESHOLDS: [u8; 3] = [25, 50, 75];
@@ -265,6 +266,10 @@ impl TimerActor {
 
     fn next_check_in_threshold(&self) -> Option<(usize, u8)> {
         self.state.as_ref().and_then(|state| {
+            if state.mode.disables_interruptions() {
+                return None;
+            }
+
             let current_percent = self.elapsed_percent();
             CHECK_IN_THRESHOLDS
                 .iter()
@@ -279,6 +284,33 @@ impl TimerActor {
     fn mark_check_in_done(&mut self, index: usize) {
         if let Some(ref mut state) = self.state {
             state.check_ins_done[index] = true;
+        }
+    }
+
+    fn check_veille_reminder(&mut self) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        if !state.mode.disables_interruptions() {
+            return;
+        }
+
+        if state.veille_reminder_sent {
+            return;
+        }
+
+        let elapsed = state.total_duration.saturating_sub(state.remaining);
+        let veille_reminder_minutes = Config::load()
+            .map(|config| config.focus().veille_reminder_minutes)
+            .unwrap_or(60);
+
+        if elapsed.as_secs() >= veille_reminder_minutes * 60 {
+            state.veille_reminder_sent = true;
+            if let Some(ref notifier) = self.notifier {
+                notifier.send_veille_reminder(veille_reminder_minutes);
+            }
+            debug!(minutes = veille_reminder_minutes, "veille reminder sent");
         }
     }
 
@@ -348,6 +380,7 @@ impl TimerActor {
                                 last_tick: Instant::now(),
                                 paused: false,
                                 check_ins_done: [false; 3],
+                                veille_reminder_sent: false,
                             });
 
                             self.persist_new_session(mode.clone());
@@ -357,9 +390,9 @@ impl TimerActor {
                                 notifier.send_session_start(duration_minutes);
                             }
 
-                            if let (Some(ref app_tracker), Some(ref session)) = (&self.app_tracker, &self.current_session) {
+                            if let (Some(ref app_tracker), Some(ref session), Some(ref state)) = (&self.app_tracker, &self.current_session, &self.state) {
                                 if let Some(session_id) = session.id {
-                                    app_tracker.send_session_started(session_id);
+                                    app_tracker.send_session_started(session_id, state.mode.clone());
                                 }
                             }
                         }
@@ -485,6 +518,8 @@ impl TimerActor {
                                     }
                                 }
                             }
+
+                            self.check_veille_reminder();
                         }
                     }
                 }

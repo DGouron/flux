@@ -6,8 +6,8 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
 use flux_core::{
-    AppTrackingRepository, AppUsage, Config, DistractionConfig, SessionId, SessionMetrics,
-    SessionMetricsRepository, SuggestionReport, Translator,
+    AppTrackingRepository, AppUsage, Config, DistractionConfig, FocusMode, SessionId,
+    SessionMetrics, SessionMetricsRepository, SuggestionReport, Translator,
 };
 
 use super::notifier::FrictionResponse;
@@ -20,7 +20,10 @@ use crate::window::{WindowDetector, X11WindowDetector};
 const POLLING_INTERVAL_SECONDS: u64 = 5;
 
 pub enum AppTrackerMessage {
-    Started { session_id: SessionId },
+    Started {
+        session_id: SessionId,
+        mode: FocusMode,
+    },
     Ended,
     Paused,
     Resumed,
@@ -32,10 +35,13 @@ pub struct AppTrackerHandle {
 }
 
 impl AppTrackerHandle {
-    pub fn send_session_started(&self, session_id: SessionId) {
+    pub fn send_session_started(&self, session_id: SessionId, mode: FocusMode) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
-            if let Err(error) = sender.send(AppTrackerMessage::Started { session_id }).await {
+            if let Err(error) = sender
+                .send(AppTrackerMessage::Started { session_id, mode })
+                .await
+            {
                 error!(%error, "failed to send session started message to app tracker");
             }
         });
@@ -79,6 +85,7 @@ struct WindowKey {
 
 struct TrackerState {
     session_id: SessionId,
+    mode: FocusMode,
     paused: bool,
     accumulated: HashMap<WindowKey, i64>,
     current_distraction: Option<String>,
@@ -181,10 +188,11 @@ impl AppTrackerActor {
 
     fn handle_message(&mut self, message: AppTrackerMessage) {
         match message {
-            AppTrackerMessage::Started { session_id } => {
-                debug!(session_id, "app tracking started for session");
+            AppTrackerMessage::Started { session_id, mode } => {
+                debug!(session_id, ?mode, "app tracking started for session");
                 self.state = Some(TrackerState {
                     session_id,
+                    mode,
                     paused: false,
                     accumulated: HashMap::new(),
                     current_distraction: None,
@@ -355,6 +363,10 @@ impl AppTrackerActor {
             return;
         };
 
+        if state.mode.disables_interruptions() {
+            return;
+        }
+
         if state.distraction_alert_sent {
             return;
         }
@@ -466,6 +478,10 @@ impl AppTrackerActor {
         let Some(ref mut state) = self.state else {
             return;
         };
+
+        if state.mode.disables_interruptions() {
+            return;
+        }
 
         if state.friction_response_pending.is_some() {
             return;
@@ -708,7 +724,7 @@ mod tests {
             tokio::time::timeout(Duration::from_millis(100), actor.run()).await
         });
 
-        handle.send_session_started(1);
+        handle.send_session_started(1, FocusMode::AiAssisted);
         handle.send_session_paused();
         handle.send_session_resumed();
         handle.send_session_ended();
@@ -732,6 +748,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 42,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::from([
                 (
@@ -780,6 +797,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 1,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::new(),
             current_distraction: None,
@@ -825,6 +843,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 1,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::new(),
             current_distraction: Some("Discord".to_string()),
@@ -860,6 +879,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 1,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::new(),
             current_distraction: Some("Discord".to_string()),
@@ -898,6 +918,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 1,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::new(),
             current_distraction: None,
@@ -933,6 +954,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 1,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::new(),
             current_distraction: None,
@@ -967,6 +989,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 1,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::new(),
             current_distraction: None,
@@ -1001,6 +1024,7 @@ mod tests {
 
         actor.state = Some(TrackerState {
             session_id: 1,
+            mode: FocusMode::AiAssisted,
             paused: false,
             accumulated: HashMap::new(),
             current_distraction: None,

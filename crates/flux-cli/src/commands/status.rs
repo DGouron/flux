@@ -135,6 +135,7 @@ fn format_mode(mode: FocusMode) -> String {
         FocusMode::AiAssisted => "ai-assisted".to_string(),
         FocusMode::Review => "review".to_string(),
         FocusMode::Architecture => "architecture".to_string(),
+        FocusMode::Veille => "veille".to_string(),
         FocusMode::Custom(name) => name,
     }
 }

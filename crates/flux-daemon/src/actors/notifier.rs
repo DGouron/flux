@@ -57,6 +57,9 @@ pub enum NotifierMessage {
         total_time: String,
         session_count: usize,
     },
+    VeilleReminder {
+        minutes: u64,
+    },
 }
 
 #[derive(Clone)]
@@ -207,6 +210,18 @@ impl NotifierHandle {
             }
         });
     }
+
+    pub fn send_veille_reminder(&self, minutes: u64) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender
+                .send(NotifierMessage::VeilleReminder { minutes })
+                .await
+            {
+                error!(%error, "failed to send veille reminder notification message");
+            }
+        });
+    }
 }
 
 pub struct NotifierActor {
@@ -286,6 +301,9 @@ impl NotifierActor {
                     session_count,
                 } => {
                     self.send_weekly_digest_notification(&total_time, session_count);
+                }
+                NotifierMessage::VeilleReminder { minutes } => {
+                    self.send_veille_reminder_notification(minutes);
                 }
             }
         }
@@ -634,6 +652,27 @@ impl NotifierActor {
             }
             Err(error) => {
                 warn!(%error, "failed to show weekly digest notification");
+            }
+        }
+    }
+
+    fn send_veille_reminder_notification(&self, minutes: u64) {
+        let translator = self.get_translator();
+        let title = format!(
+            "Flux - {}",
+            translator.get("notification.veille_reminder_title")
+        );
+        let body = translator.format(
+            "notification.veille_reminder_body",
+            &[("minutes", &minutes.to_string())],
+        );
+
+        match self.build_notification(&title, &body).show() {
+            Ok(_) => {
+                info!(minutes, "veille reminder notification sent");
+            }
+            Err(error) => {
+                warn!(%error, "failed to show veille reminder notification");
             }
         }
     }

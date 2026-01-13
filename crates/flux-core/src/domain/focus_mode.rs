@@ -5,6 +5,7 @@ pub enum FocusMode {
     AiAssisted,
     Review,
     Architecture,
+    Veille,
     Custom(String),
 }
 
@@ -14,6 +15,7 @@ impl FocusMode {
             FocusMode::AiAssisted => "ai-assisted",
             FocusMode::Review => "review",
             FocusMode::Architecture => "architecture",
+            FocusMode::Veille => "veille",
             FocusMode::Custom(name) => name,
         }
     }
@@ -23,8 +25,13 @@ impl FocusMode {
             "prompting" | "ai-assisted" => FocusMode::AiAssisted,
             "review" => FocusMode::Review,
             "architecture" => FocusMode::Architecture,
+            "veille" => FocusMode::Veille,
             other => FocusMode::Custom(other.to_string()),
         }
+    }
+
+    pub fn disables_interruptions(&self) -> bool {
+        matches!(self, FocusMode::Veille)
     }
 }
 
@@ -44,6 +51,7 @@ mod tests {
             FocusMode::AiAssisted,
             FocusMode::Review,
             FocusMode::Architecture,
+            FocusMode::Veille,
         ];
 
         for mode in modes {
@@ -71,5 +79,14 @@ mod tests {
     fn legacy_prompting_value_maps_to_ai_assisted() {
         let restored = FocusMode::from_stored("prompting");
         assert_eq!(restored, FocusMode::AiAssisted);
+    }
+
+    #[test]
+    fn veille_mode_disables_interruptions() {
+        assert!(FocusMode::Veille.disables_interruptions());
+        assert!(!FocusMode::AiAssisted.disables_interruptions());
+        assert!(!FocusMode::Review.disables_interruptions());
+        assert!(!FocusMode::Architecture.disables_interruptions());
+        assert!(!FocusMode::Custom("custom".to_string()).disables_interruptions());
     }
 }

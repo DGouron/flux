@@ -11,6 +11,7 @@ pub async fn execute(duration: Option<u64>, mode: Option<String>) -> Result<()> 
         Some("ai-assisted") => Some(FocusMode::AiAssisted),
         Some("review") => Some(FocusMode::Review),
         Some("architecture") => Some(FocusMode::Architecture),
+        Some("veille") => Some(FocusMode::Veille),
         Some(custom) => Some(FocusMode::Custom(custom.to_string())),
         None => None,
     };
@@ -79,6 +80,7 @@ fn format_mode(mode: FocusMode) -> String {
         FocusMode::AiAssisted => "ai-assisted".to_string(),
         FocusMode::Review => "review".to_string(),
         FocusMode::Architecture => "architecture".to_string(),
+        FocusMode::Veille => "veille".to_string(),
         FocusMode::Custom(name) => name,
     }
 }

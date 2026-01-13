@@ -159,6 +159,8 @@ friction_no_continue = "No, continue"
 friction_yes_stop = "Yes, stop"
 digest_title = "Weekly Summary"
 digest_body = "{time} this week ({sessions} sessions)"
+veille_reminder_title = "Watch Mode Reminder"
+veille_reminder_body = "Your watch session has been running for {minutes} minutes"
 
 [gui]
 tab_overview = "Overview"
