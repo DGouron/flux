@@ -256,7 +256,7 @@ mod unix_tests {
             let response = Response::SessionStatus {
                 active: true,
                 remaining_seconds: 1500,
-                mode: Some(flux_protocol::FocusMode::Prompting),
+                mode: Some(flux_protocol::FocusMode::AiAssisted),
                 paused: false,
             };
             let response_bytes = bincode::serialize(&response).unwrap();

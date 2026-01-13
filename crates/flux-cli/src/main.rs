@@ -26,7 +26,7 @@ enum Commands {
         /// Durée en minutes (défaut: 25)
         #[arg(short, long)]
         duration: Option<u64>,
-        /// Mode focus: prompting, review, architecture, ou custom
+        /// Mode focus: ai-assisted, review, architecture, ou custom
         #[arg(short, long)]
         mode: Option<String>,
     },

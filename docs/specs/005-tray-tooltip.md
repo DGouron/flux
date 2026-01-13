@@ -25,7 +25,7 @@ The icon shows state (SPEC-004), but not details. The tooltip adds temporal info
 | State | Tooltip |
 |-------|---------|
 | Inactive | `Flux - No active session` |
-| Active | `Flux - 12:34 remaining (prompting)` |
+| Active | `Flux - 12:34 remaining (ai-assisted)` |
 | Paused | `Flux - Paused (12:34 remaining)` |
 | Check-in | `Flux - Check-in pending` |
 

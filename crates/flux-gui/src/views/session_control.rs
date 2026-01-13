@@ -234,7 +234,7 @@ pub struct StartSessionForm {
 impl Default for StartSessionForm {
     fn default() -> Self {
         Self {
-            selected_mode: FocusMode::Prompting,
+            selected_mode: FocusMode::AiAssisted,
             selected_duration: DurationPreset::Pomodoro,
             custom_minutes: 25,
         }
@@ -358,9 +358,9 @@ fn render_start_form(
 
         let modes = [
             (
-                FocusMode::Prompting,
-                "Prompting",
-                theme.colors.mode_prompting,
+                FocusMode::AiAssisted,
+                "AI-Assisted",
+                theme.colors.mode_ai_assisted,
             ),
             (FocusMode::Review, "Review", theme.colors.mode_review),
             (

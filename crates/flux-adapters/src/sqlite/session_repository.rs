@@ -296,14 +296,14 @@ mod tests {
     fn save_and_retrieve_session() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session = Session::start(FocusMode::Prompting);
+        let mut session = Session::start(FocusMode::AiAssisted);
         let id = repository.save(&mut session).unwrap();
 
         assert!(id > 0);
         assert_eq!(session.id, Some(id));
 
         let retrieved = repository.find_by_id(id).unwrap();
-        assert_eq!(retrieved.mode, FocusMode::Prompting);
+        assert_eq!(retrieved.mode, FocusMode::AiAssisted);
         assert!(retrieved.is_active());
     }
 
@@ -339,7 +339,7 @@ mod tests {
     fn find_active_returns_none_when_all_ended() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session = Session::start(FocusMode::Prompting);
+        let mut session = Session::start(FocusMode::AiAssisted);
         repository.save(&mut session).unwrap();
         session.end();
         repository.update(&session).unwrap();
@@ -352,7 +352,7 @@ mod tests {
     fn check_in_count_persists() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session = Session::start(FocusMode::Prompting);
+        let mut session = Session::start(FocusMode::AiAssisted);
         session.increment_check_in();
         session.increment_check_in();
         repository.save(&mut session).unwrap();
@@ -378,7 +378,7 @@ mod tests {
 
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session1 = Session::start(FocusMode::Prompting);
+        let mut session1 = Session::start(FocusMode::AiAssisted);
         session1.end();
         repository.save(&mut session1).unwrap();
 
@@ -398,7 +398,7 @@ mod tests {
 
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut completed = Session::start(FocusMode::Prompting);
+        let mut completed = Session::start(FocusMode::AiAssisted);
         completed.end();
         repository.save(&mut completed).unwrap();
 
@@ -409,14 +409,14 @@ mod tests {
         let sessions = repository.find_completed_since(since).unwrap();
 
         assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].mode, FocusMode::Prompting);
+        assert_eq!(sessions[0].mode, FocusMode::AiAssisted);
     }
 
     #[test]
     fn count_completed_sessions_returns_correct_count() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session1 = Session::start(FocusMode::Prompting);
+        let mut session1 = Session::start(FocusMode::AiAssisted);
         session1.end();
         repository.save(&mut session1).unwrap();
 
@@ -435,7 +435,7 @@ mod tests {
     fn clear_completed_sessions_removes_only_terminated() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session1 = Session::start(FocusMode::Prompting);
+        let mut session1 = Session::start(FocusMode::AiAssisted);
         session1.end();
         repository.save(&mut session1).unwrap();
 
@@ -447,7 +447,7 @@ mod tests {
         session3.end();
         repository.save(&mut session3).unwrap();
 
-        let mut active = Session::start(FocusMode::Prompting);
+        let mut active = Session::start(FocusMode::AiAssisted);
         repository.save(&mut active).unwrap();
 
         let deleted = repository.clear_completed_sessions().unwrap();
@@ -465,7 +465,7 @@ mod tests {
     fn has_active_session_returns_true_when_active() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session = Session::start(FocusMode::Prompting);
+        let mut session = Session::start(FocusMode::AiAssisted);
         repository.save(&mut session).unwrap();
 
         assert!(repository.has_active_session().unwrap());
@@ -475,7 +475,7 @@ mod tests {
     fn has_active_session_returns_false_when_none() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session = Session::start(FocusMode::Prompting);
+        let mut session = Session::start(FocusMode::AiAssisted);
         session.end();
         repository.save(&mut session).unwrap();
 
@@ -486,7 +486,7 @@ mod tests {
     fn delete_session_removes_completed_session() {
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session = Session::start(FocusMode::Prompting);
+        let mut session = Session::start(FocusMode::AiAssisted);
         session.end();
         repository.save(&mut session).unwrap();
 
@@ -538,7 +538,7 @@ mod tests {
 
         let now = Utc::now();
 
-        let mut session1 = Session::start(FocusMode::Prompting);
+        let mut session1 = Session::start(FocusMode::AiAssisted);
         session1.end();
         repository.save(&mut session1).unwrap();
 
@@ -559,7 +559,7 @@ mod tests {
 
         let repository = SqliteSessionRepository::in_memory().unwrap();
 
-        let mut session = Session::start(FocusMode::Prompting);
+        let mut session = Session::start(FocusMode::AiAssisted);
         session.end();
         repository.save(&mut session).unwrap();
 

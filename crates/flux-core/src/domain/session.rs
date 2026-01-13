@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn new_session_starts_active() {
-        let session = Session::start(FocusMode::Prompting);
+        let session = Session::start(FocusMode::AiAssisted);
 
         assert!(session.id.is_none());
         assert!(session.is_active());

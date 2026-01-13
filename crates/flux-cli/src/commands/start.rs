@@ -8,7 +8,7 @@ pub async fn execute(duration: Option<u64>, mode: Option<String>) -> Result<()> 
     let translator = get_translator();
 
     let focus_mode = match mode.as_deref() {
-        Some("prompting") => Some(FocusMode::Prompting),
+        Some("ai-assisted") => Some(FocusMode::AiAssisted),
         Some("review") => Some(FocusMode::Review),
         Some("architecture") => Some(FocusMode::Architecture),
         Some(custom) => Some(FocusMode::Custom(custom.to_string())),
@@ -42,7 +42,7 @@ pub async fn execute(duration: Option<u64>, mode: Option<String>) -> Result<()> 
             let duration_display = duration.unwrap_or(25);
             let mode_display = focus_mode
                 .map(format_mode)
-                .unwrap_or_else(|| "prompting".to_string());
+                .unwrap_or_else(|| "ai-assisted".to_string());
 
             println!("{}", translator.get("command.start_success"));
             println!(
@@ -76,7 +76,7 @@ fn get_translator() -> Translator {
 
 fn format_mode(mode: FocusMode) -> String {
     match mode {
-        FocusMode::Prompting => "prompting".to_string(),
+        FocusMode::AiAssisted => "ai-assisted".to_string(),
         FocusMode::Review => "review".to_string(),
         FocusMode::Architecture => "architecture".to_string(),
         FocusMode::Custom(name) => name,

@@ -102,7 +102,7 @@ pub struct Colors {
     pub warning: Color32,
     pub error: Color32,
 
-    pub mode_prompting: Color32,
+    pub mode_ai_assisted: Color32,
     pub mode_review: Color32,
     pub mode_architecture: Color32,
     pub mode_custom: Color32,
@@ -127,7 +127,7 @@ impl Colors {
             warning: Color32::from_rgb(245, 158, 11),
             error: Color32::from_rgb(239, 68, 68),
 
-            mode_prompting: Color32::from_rgb(59, 130, 246),
+            mode_ai_assisted: Color32::from_rgb(59, 130, 246),
             mode_review: Color32::from_rgb(168, 85, 247),
             mode_architecture: Color32::from_rgb(6, 182, 212),
             mode_custom: Color32::from_rgb(16, 185, 129),
@@ -136,7 +136,7 @@ impl Colors {
 
     pub fn mode_color(&self, mode: &str) -> Color32 {
         match mode.to_lowercase().as_str() {
-            "prompting" => self.mode_prompting,
+            "prompting" | "ai-assisted" => self.mode_ai_assisted,
             "review" => self.mode_review,
             "architecture" => self.mode_architecture,
             _ => self.mode_custom,

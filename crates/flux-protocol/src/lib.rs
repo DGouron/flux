@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn focus_mode_serialization_roundtrip() {
         let modes = vec![
-            FocusMode::Prompting,
+            FocusMode::AiAssisted,
             FocusMode::Review,
             FocusMode::Architecture,
             FocusMode::Custom("deep-work".to_string()),
@@ -77,7 +77,7 @@ mod tests {
     fn request_start_session_serialization() {
         let request = Request::StartSession {
             duration: Some(25),
-            mode: Some(FocusMode::Prompting),
+            mode: Some(FocusMode::AiAssisted),
         };
 
         let bytes = bincode::serialize(&request).unwrap();

@@ -62,10 +62,10 @@ This interactive wizard configures Flux on first use:
 ### Start a focus session
 
 ```bash
-flux start                    # Défaut: 25 min, mode prompting
-flux start -d 45              # 45 minutes
-flux start -m review          # Mode review
-flux start -d 30 -m prompting # Combiné
+flux start                       # Défaut: 25 min, mode ai-assisted
+flux start -d 45                 # 45 minutes
+flux start -m review             # Mode review
+flux start -d 30 -m ai-assisted  # Combiné
 ```
 
 ### Check status
@@ -85,7 +85,7 @@ flux stop
 
 | Mode | Description |
 |------|-------------|
-| `prompting` | AI prompting and agent guidance |
+| `ai-assisted` | AI-assisted development and prompting |
 | `review` | Code review and validation |
 | `architecture` | System design and architecture |
 

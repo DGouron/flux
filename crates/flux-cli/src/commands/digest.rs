@@ -315,8 +315,8 @@ mod tests {
         use flux_core::FocusMode;
 
         let sessions = vec![
-            create_test_session(FocusMode::Prompting, 1800),
-            create_test_session(FocusMode::Prompting, 1200),
+            create_test_session(FocusMode::AiAssisted, 1800),
+            create_test_session(FocusMode::AiAssisted, 1200),
             create_test_session(FocusMode::Review, 900),
         ];
         let distraction_config = create_test_distraction_config();
@@ -325,7 +325,7 @@ mod tests {
 
         assert_eq!(stats.total_seconds, 3900);
         assert_eq!(stats.session_count, 3);
-        assert_eq!(stats.by_mode.get("prompting"), Some(&3000));
+        assert_eq!(stats.by_mode.get("ai-assisted"), Some(&3000));
         assert_eq!(stats.by_mode.get("review"), Some(&900));
     }
 

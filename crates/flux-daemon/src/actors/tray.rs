@@ -429,9 +429,9 @@ mod tests {
         let info = TrayDisplayInfo {
             state: TrayState::Active,
             remaining: Some(Duration::from_secs(754)),
-            mode: Some(FocusMode::Prompting),
+            mode: Some(FocusMode::AiAssisted),
         };
-        assert_eq!(info.tooltip_description(), "12:34 remaining (prompting)");
+        assert_eq!(info.tooltip_description(), "12:34 remaining (ai-assisted)");
     }
 
     #[test]

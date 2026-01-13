@@ -366,8 +366,8 @@ mod tests {
         use flux_core::FocusMode;
 
         let sessions = vec![
-            create_test_session(FocusMode::Prompting, 1800, 2),
-            create_test_session(FocusMode::Prompting, 1200, 1),
+            create_test_session(FocusMode::AiAssisted, 1800, 2),
+            create_test_session(FocusMode::AiAssisted, 1200, 1),
             create_test_session(FocusMode::Review, 900, 0),
         ];
         let distraction_config = create_test_distraction_config();
@@ -376,7 +376,7 @@ mod tests {
 
         assert_eq!(stats.total_seconds, 3900);
         assert_eq!(stats.session_count, 3);
-        assert_eq!(stats.by_mode.get("prompting"), Some(&3000));
+        assert_eq!(stats.by_mode.get("ai-assisted"), Some(&3000));
         assert_eq!(stats.by_mode.get("review"), Some(&900));
         assert_eq!(stats.total_check_ins, 3);
         assert!(stats.focus_applications.is_empty());
@@ -387,7 +387,7 @@ mod tests {
     fn compute_stats_separates_focus_and_distraction_apps() {
         use flux_core::FocusMode;
 
-        let sessions = vec![create_test_session(FocusMode::Prompting, 1800, 0)];
+        let sessions = vec![create_test_session(FocusMode::AiAssisted, 1800, 0)];
         let app_usages = vec![
             AppUsage::with_duration(1, "cursor".to_string(), 1000),
             AppUsage::with_duration(1, "firefox".to_string(), 500),
@@ -410,8 +410,8 @@ mod tests {
         use flux_core::FocusMode;
 
         let sessions = vec![
-            create_test_session(FocusMode::Prompting, 1800, 0),
-            create_test_session(FocusMode::Prompting, 1200, 0),
+            create_test_session(FocusMode::AiAssisted, 1800, 0),
+            create_test_session(FocusMode::AiAssisted, 1200, 0),
         ];
         let app_usages = vec![
             AppUsage::with_duration(1, "cursor".to_string(), 1000),

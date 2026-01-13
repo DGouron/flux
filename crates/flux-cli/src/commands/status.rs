@@ -132,7 +132,7 @@ fn print_formatted(
 
 fn format_mode(mode: FocusMode) -> String {
     match mode {
-        FocusMode::Prompting => "prompting".to_string(),
+        FocusMode::AiAssisted => "ai-assisted".to_string(),
         FocusMode::Review => "review".to_string(),
         FocusMode::Architecture => "architecture".to_string(),
         FocusMode::Custom(name) => name,
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn format_mode_returns_correct_strings() {
-        assert_eq!(format_mode(FocusMode::Prompting), "prompting");
+        assert_eq!(format_mode(FocusMode::AiAssisted), "ai-assisted");
         assert_eq!(format_mode(FocusMode::Review), "review");
         assert_eq!(format_mode(FocusMode::Architecture), "architecture");
         assert_eq!(

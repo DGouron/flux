@@ -293,6 +293,14 @@ impl TimerActor {
                 Ok(CheckInResponse::Focused) => {
                     debug!("check-in response: focused, continuing");
                     self.pending_check_in = None;
+
+                    if let Some(ref state) = self.state {
+                        self.update_tray_active(state.remaining, state.mode.clone());
+                    }
+
+                    if let Some(ref notifier) = self.notifier {
+                        notifier.send_check_in_focused();
+                    }
                 }
                 Err(oneshot::error::TryRecvError::Empty) => {}
                 Err(oneshot::error::TryRecvError::Closed) => {
@@ -525,7 +533,7 @@ mod tests {
         tokio::spawn(actor.run());
 
         handle
-            .start(Duration::from_secs(60), FocusMode::Prompting)
+            .start(Duration::from_secs(60), FocusMode::AiAssisted)
             .await
             .unwrap();
 
@@ -534,7 +542,7 @@ mod tests {
         let status = handle.get_status().await.unwrap();
         assert!(status.active);
         assert!(status.remaining.as_secs() >= 59);
-        assert_eq!(status.mode, Some(FocusMode::Prompting));
+        assert_eq!(status.mode, Some(FocusMode::AiAssisted));
         assert!(!status.paused);
     }
 

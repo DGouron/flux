@@ -183,7 +183,7 @@ async fn handle_request(
 
         Request::StartSession { duration, mode } => {
             let duration_minutes = duration.unwrap_or(DEFAULT_DURATION_MINUTES);
-            let focus_mode = mode.unwrap_or(FocusMode::Prompting);
+            let focus_mode = mode.unwrap_or(FocusMode::AiAssisted);
 
             if timer_handle
                 .start(Duration::from_secs(duration_minutes * 60), focus_mode)
