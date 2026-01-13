@@ -35,6 +35,7 @@ pub enum NotifierMessage {
     },
     SessionPaused,
     SessionResumed,
+    CheckInFocused,
     Alert {
         title: String,
         body: String,
@@ -119,6 +120,15 @@ impl NotifierHandle {
         tokio::spawn(async move {
             if let Err(error) = sender.send(NotifierMessage::SessionResumed).await {
                 error!(%error, "failed to send session resumed notification message");
+            }
+        });
+    }
+
+    pub fn send_check_in_focused(&self) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = sender.send(NotifierMessage::CheckInFocused).await {
+                error!(%error, "failed to send check-in focused notification message");
             }
         });
     }
@@ -249,6 +259,9 @@ impl NotifierActor {
                 NotifierMessage::SessionResumed => {
                     self.send_session_resumed_notification();
                 }
+                NotifierMessage::CheckInFocused => {
+                    self.send_check_in_focused_notification();
+                }
                 NotifierMessage::Alert { title, body } => {
                     self.send_alert_notification(&title, &body);
                 }
@@ -347,6 +360,24 @@ impl NotifierActor {
             }
             let _ = response_sender.send(CheckInResponse::Focused);
         });
+    }
+
+    fn send_check_in_focused_notification(&self) {
+        let translator = self.get_translator();
+        let title = format!(
+            "Flux - {}",
+            translator.get("notification.check_in_focused_title")
+        );
+        let body = translator.get("notification.check_in_focused_body");
+
+        match self.build_notification(&title, &body).show() {
+            Ok(_) => {
+                debug!("check-in focused notification sent");
+            }
+            Err(error) => {
+                warn!(%error, "failed to show check-in focused notification");
+            }
+        }
     }
 
     fn send_session_start_notification(&self, duration_minutes: u64) {
