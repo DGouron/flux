@@ -15,7 +15,7 @@ name = "flux-gui"
 path = "src/main.rs"
 
 [dependencies]
-eframe = "0.30"
+eframe = "0.33"
 egui_extras = { version = "0.30", features = ["datepicker"] }
 egui_plot = "0.30"
 
