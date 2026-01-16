@@ -7,6 +7,10 @@ version = "0.2.13"
 edition = "2021"
 license = "MIT"
 authors = ["Damien"]
+repository = "https://github.com/DGouron/flux"
+homepage = "https://github.com/DGouron/flux"
+keywords = ["focus", "productivity", "distraction", "cli", "pomodoro"]
+categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
